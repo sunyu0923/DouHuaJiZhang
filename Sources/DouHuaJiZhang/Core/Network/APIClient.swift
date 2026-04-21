@@ -2,7 +2,7 @@ import Foundation
 import ComposableArchitecture
 
 /// API 错误类型
-enum APIError: Error, Equatable, Sendable {
+enum APIError: Error, Equatable, Sendable, LocalizedError {
     case unauthorized
     case forbidden
     case notFound
@@ -13,7 +13,7 @@ enum APIError: Error, Equatable, Sendable {
     case decodingError(String)
     case unknown(String)
     
-    var localizedDescription: String {
+    var errorDescription: String? {
         switch self {
         case .unauthorized: return "登录已过期，请重新登录"
         case .forbidden: return "没有访问权限"
@@ -203,13 +203,14 @@ extension APIClient: DependencyKey {
         }()
         
         @Dependency(\.keychainClient) var keychain
+        let keychainClient = keychain
         
         func makeRequest(_ path: String, method: String = "GET", body: (any Encodable)? = nil) async throws -> URLRequest {
             var request = URLRequest(url: baseURL.appendingPathComponent(path))
             request.httpMethod = method
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             
-            if let token = try? await keychain.getToken() {
+            if let token = try? await keychainClient.getToken() {
                 request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
             

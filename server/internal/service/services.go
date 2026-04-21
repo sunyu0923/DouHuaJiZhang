@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/douhuajizhang/server/internal/model"
@@ -119,7 +121,10 @@ func (s *TransactionService) GetTransactions(ctx context.Context, ledgerID uuid.
 }
 
 func (s *TransactionService) CreateTransaction(ctx context.Context, ledgerID, userID uuid.UUID, req *model.CreateTransactionRequest) (*model.Transaction, error) {
-	opID, _ := uuid.Parse(req.OperationID)
+	opID, err := uuid.Parse(req.OperationID)
+	if err != nil {
+		return nil, fmt.Errorf("无效的操作ID: %w", err)
+	}
 
 	// Idempotency check
 	exists, _ := s.txRepo.CheckOperationExists(ctx, opID)
@@ -127,8 +132,18 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, ledgerID, us
 		return nil, ErrConflict
 	}
 
-	amount, _ := decimal.NewFromString(req.Amount)
-	date, _ := time.Parse("2006-01-02", req.Date)
+	amount, err := decimal.NewFromString(req.Amount)
+	if err != nil {
+		return nil, fmt.Errorf("无效的金额: %w", err)
+	}
+	if amount.LessThanOrEqual(decimal.Zero) {
+		return nil, fmt.Errorf("金额必须大于0")
+	}
+
+	date, err := time.Parse("2006-01-02", req.Date)
+	if err != nil {
+		return nil, fmt.Errorf("无效的日期格式: %w", err)
+	}
 
 	tx := &model.Transaction{
 		ID:          uuid.New(),

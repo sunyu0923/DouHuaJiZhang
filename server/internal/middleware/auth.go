@@ -11,7 +11,8 @@ import (
 
 // Claims JWT claims
 type Claims struct {
-	UserID string `json:"user_id"`
+	UserID    string `json:"user_id"`
+	TokenType string `json:"token_type"` // "access" or "refresh"
 	jwt.RegisteredClaims
 }
 
@@ -47,6 +48,12 @@ func AuthRequired(jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
+		if claims.TokenType != "access" {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "无效的令牌类型"})
+			c.Abort()
+			return
+		}
+
 		userID, err := uuid.Parse(claims.UserID)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "无效的用户信息"})
@@ -60,7 +67,14 @@ func AuthRequired(jwtSecret string) gin.HandlerFunc {
 }
 
 // GetUserID 从 context 获取用户 ID
-func GetUserID(c *gin.Context) uuid.UUID {
-	id, _ := c.Get("userID")
-	return id.(uuid.UUID)
+func GetUserID(c *gin.Context) (uuid.UUID, bool) {
+	id, exists := c.Get("userID")
+	if !exists {
+		return uuid.Nil, false
+	}
+	userID, ok := id.(uuid.UUID)
+	if !ok {
+		return uuid.Nil, false
+	}
+	return userID, true
 }

@@ -117,5 +117,8 @@ struct SettingsFeature {
                 return .none
             }
         }
+        .ifLet(\.$badges, action: \.badges) {
+            EmptyReducer()
+        }
     }
 }

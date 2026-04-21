@@ -39,14 +39,14 @@ struct LedgerFeature {
     }
     
     struct LedgerSwitchState: Equatable, Identifiable {
-        var id: UUID { UUID() }
+        let id = UUID()
         var ledgers: [Ledger] = []
         var newLedgerName: String = ""
         var newLedgerType: LedgerType = .personal
     }
     
     struct TransactionDetailState: Equatable, Identifiable {
-        var id: UUID { transaction.id }
+        let id: UUID
         var transaction: Transaction
         var isEditing: Bool = false
     }
@@ -121,16 +121,28 @@ struct LedgerFeature {
                 let ledgerId = ledger.id
                 return .merge(
                     .run { send in
-                        let calendar = try await apiClient.fetchCalendar(ledgerId, month, year)
-                        await send(.calendarLoaded(calendar))
+                        do {
+                            let calendar = try await apiClient.fetchCalendar(ledgerId, month, year)
+                            await send(.calendarLoaded(calendar))
+                        } catch {
+                            await send(.loadFailed(error.localizedDescription))
+                        }
                     },
                     .run { send in
-                        let stats = try await apiClient.fetchStatistics(ledgerId, month, year)
-                        await send(.statisticsLoaded(stats))
+                        do {
+                            let stats = try await apiClient.fetchStatistics(ledgerId, month, year)
+                            await send(.statisticsLoaded(stats))
+                        } catch {
+                            await send(.loadFailed(error.localizedDescription))
+                        }
                     },
                     .run { send in
-                        let txns = try await apiClient.fetchTransactions(ledgerId, 1, 20)
-                        await send(.transactionsLoaded(txns))
+                        do {
+                            let txns = try await apiClient.fetchTransactions(ledgerId, 1, 20)
+                            await send(.transactionsLoaded(txns))
+                        } catch {
+                            await send(.loadFailed(error.localizedDescription))
+                        }
                     }
                 )
                 
@@ -190,7 +202,7 @@ struct LedgerFeature {
                 return .none
                 
             case .showTransactionDetail(let transaction):
-                state.transactionDetail = TransactionDetailState(transaction: transaction)
+                state.transactionDetail = TransactionDetailState(id: transaction.id, transaction: transaction)
                 return .none
                 
             case .addTransaction(.presented(.transactionSaved)):
@@ -237,6 +249,12 @@ struct LedgerFeature {
         }
         .ifLet(\.$addTransaction, action: \.addTransaction) {
             TransactionFeature()
+        }
+        .ifLet(\.$ledgerSwitch, action: \.ledgerSwitch) {
+            EmptyReducer()
+        }
+        .ifLet(\.$transactionDetail, action: \.transactionDetail) {
+            EmptyReducer()
         }
     }
 }

@@ -72,7 +72,11 @@ func RegisterAuthRoutes(r *gin.RouterGroup, svc *service.AuthService) {
 // RegisterUserRoutes 注册用户路由
 func RegisterUserRoutes(r *gin.RouterGroup, svc *service.UserService) {
 	r.GET("/profile", func(c *gin.Context) {
-		userID := middleware.GetUserID(c)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		user, err := svc.GetProfile(c.Request.Context(), userID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, model.Error(404, "用户不存在"))
@@ -82,7 +86,11 @@ func RegisterUserRoutes(r *gin.RouterGroup, svc *service.UserService) {
 	})
 
 	r.PUT("/profile", func(c *gin.Context) {
-		userID := middleware.GetUserID(c)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		user, err := svc.GetProfile(c.Request.Context(), userID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, model.Error(404, "用户不存在"))
@@ -100,7 +108,11 @@ func RegisterUserRoutes(r *gin.RouterGroup, svc *service.UserService) {
 	})
 
 	r.GET("/badges", func(c *gin.Context) {
-		userID := middleware.GetUserID(c)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		badges, err := svc.GetBadges(c.Request.Context(), userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, model.Error(500, err.Error()))
@@ -113,7 +125,11 @@ func RegisterUserRoutes(r *gin.RouterGroup, svc *service.UserService) {
 // RegisterLedgerRoutes 注册账本路由
 func RegisterLedgerRoutes(r *gin.RouterGroup, svc *service.LedgerService) {
 	r.GET("", func(c *gin.Context) {
-		userID := middleware.GetUserID(c)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		ledgers, err := svc.GetLedgers(c.Request.Context(), userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, model.Error(500, err.Error()))
@@ -128,7 +144,11 @@ func RegisterLedgerRoutes(r *gin.RouterGroup, svc *service.LedgerService) {
 			c.JSON(http.StatusBadRequest, model.Error(400, err.Error()))
 			return
 		}
-		userID := middleware.GetUserID(c)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		ledger, err := svc.CreateLedger(c.Request.Context(), userID, &req)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, model.Error(500, err.Error()))
@@ -139,7 +159,11 @@ func RegisterLedgerRoutes(r *gin.RouterGroup, svc *service.LedgerService) {
 
 	r.DELETE("/:id", func(c *gin.Context) {
 		id, _ := uuid.Parse(c.Param("id"))
-		userID := middleware.GetUserID(c)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		if err := svc.Delete(c.Request.Context(), id, userID); err != nil {
 			c.JSON(http.StatusForbidden, model.Error(403, err.Error()))
 			return
@@ -155,7 +179,11 @@ func RegisterLedgerRoutes(r *gin.RouterGroup, svc *service.LedgerService) {
 			c.JSON(http.StatusBadRequest, model.Error(400, err.Error()))
 			return
 		}
-		userID := middleware.GetUserID(c)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		if err := svc.InviteMember(c.Request.Context(), id, userID, req.Phone); err != nil {
 			c.JSON(http.StatusBadRequest, model.Error(400, err.Error()))
 			return
@@ -166,7 +194,11 @@ func RegisterLedgerRoutes(r *gin.RouterGroup, svc *service.LedgerService) {
 	r.DELETE("/:id/members/:userId", func(c *gin.Context) {
 		id, _ := uuid.Parse(c.Param("id"))
 		targetID, _ := uuid.Parse(c.Param("userId"))
-		userID := middleware.GetUserID(c)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		if err := svc.RemoveMember(c.Request.Context(), id, userID, targetID); err != nil {
 			c.JSON(http.StatusForbidden, model.Error(403, err.Error()))
 			return
@@ -198,7 +230,11 @@ func RegisterTransactionRoutes(r *gin.RouterGroup, svc *service.TransactionServi
 			c.JSON(http.StatusBadRequest, model.Error(400, err.Error()))
 			return
 		}
-		userID := middleware.GetUserID(c)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		tx, err := svc.CreateTransaction(c.Request.Context(), ledgerID, userID, &req)
 		if err != nil {
 			if err == service.ErrConflict {
@@ -249,7 +285,11 @@ func RegisterTransactionRoutes(r *gin.RouterGroup, svc *service.TransactionServi
 // RegisterSavingsRoutes 注册攒钱路由
 func RegisterSavingsRoutes(r *gin.RouterGroup, svc *service.SavingsService) {
 	r.GET("", func(c *gin.Context) {
-		userID := middleware.GetUserID(c)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		year, _ := strconv.Atoi(c.DefaultQuery("year", "2026"))
 		plans, err := svc.GetPlans(c.Request.Context(), userID, year)
 		if err != nil {
@@ -260,7 +300,11 @@ func RegisterSavingsRoutes(r *gin.RouterGroup, svc *service.SavingsService) {
 	})
 
 	r.POST("", func(c *gin.Context) {
-		userID := middleware.GetUserID(c)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		var plan model.SavingsPlan
 		if err := c.ShouldBindJSON(&plan); err != nil {
 			c.JSON(http.StatusBadRequest, model.Error(400, err.Error()))
@@ -276,7 +320,11 @@ func RegisterSavingsRoutes(r *gin.RouterGroup, svc *service.SavingsService) {
 
 	r.GET("/:id/progress", func(c *gin.Context) {
 		planID, _ := uuid.Parse(c.Param("id"))
-		userID := middleware.GetUserID(c)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		progress, err := svc.GetProgress(c.Request.Context(), planID, userID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, model.Error(404, err.Error()))
@@ -289,7 +337,11 @@ func RegisterSavingsRoutes(r *gin.RouterGroup, svc *service.SavingsService) {
 // RegisterInvestmentRoutes 注册投资路由
 func RegisterInvestmentRoutes(r *gin.RouterGroup, svc *service.InvestmentService) {
 	r.GET("", func(c *gin.Context) {
-		userID := middleware.GetUserID(c)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		investments, err := svc.GetInvestments(c.Request.Context(), userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, model.Error(500, err.Error()))
@@ -299,7 +351,11 @@ func RegisterInvestmentRoutes(r *gin.RouterGroup, svc *service.InvestmentService
 	})
 
 	r.POST("", func(c *gin.Context) {
-		userID := middleware.GetUserID(c)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		var inv model.Investment
 		if err := c.ShouldBindJSON(&inv); err != nil {
 			c.JSON(http.StatusBadRequest, model.Error(400, err.Error()))
@@ -344,15 +400,14 @@ func RegisterMarketRoutes(r *gin.RouterGroup, svc *service.InvestmentService) {
 func RegisterHealthRoutes(r *gin.RouterGroup, svc *service.HealthService) {
 	// Poop
 	r.GET("/poop", func(c *gin.Context) {
-		userID := middleware.GetUserID(c)
-		queryUID := c.Query("user_id")
-		targetID := userID
-		if queryUID != "" {
-			targetID, _ = uuid.Parse(queryUID)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
 		}
 		month, _ := strconv.Atoi(c.Query("month"))
 		year, _ := strconv.Atoi(c.Query("year"))
-		records, err := svc.GetPoopRecords(c.Request.Context(), targetID, month, year)
+		records, err := svc.GetPoopRecords(c.Request.Context(), userID, month, year)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, model.Error(500, err.Error()))
 			return
@@ -361,7 +416,11 @@ func RegisterHealthRoutes(r *gin.RouterGroup, svc *service.HealthService) {
 	})
 
 	r.POST("/poop", func(c *gin.Context) {
-		userID := middleware.GetUserID(c)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		var record model.PoopRecord
 		if err := c.ShouldBindJSON(&record); err != nil {
 			c.JSON(http.StatusBadRequest, model.Error(400, err.Error()))
@@ -386,13 +445,12 @@ func RegisterHealthRoutes(r *gin.RouterGroup, svc *service.HealthService) {
 
 	// Menstrual
 	r.GET("/menstrual", func(c *gin.Context) {
-		userID := middleware.GetUserID(c)
-		queryUID := c.Query("user_id")
-		targetID := userID
-		if queryUID != "" {
-			targetID, _ = uuid.Parse(queryUID)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
 		}
-		records, err := svc.GetMenstrualRecords(c.Request.Context(), targetID)
+		records, err := svc.GetMenstrualRecords(c.Request.Context(), userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, model.Error(500, err.Error()))
 			return
@@ -401,7 +459,11 @@ func RegisterHealthRoutes(r *gin.RouterGroup, svc *service.HealthService) {
 	})
 
 	r.POST("/menstrual", func(c *gin.Context) {
-		userID := middleware.GetUserID(c)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		var record model.MenstrualRecord
 		if err := c.ShouldBindJSON(&record); err != nil {
 			c.JSON(http.StatusBadRequest, model.Error(400, err.Error()))
@@ -425,13 +487,12 @@ func RegisterHealthRoutes(r *gin.RouterGroup, svc *service.HealthService) {
 	})
 
 	r.GET("/menstrual/prediction", func(c *gin.Context) {
-		userID := middleware.GetUserID(c)
-		queryUID := c.Query("user_id")
-		targetID := userID
-		if queryUID != "" {
-			targetID, _ = uuid.Parse(queryUID)
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
 		}
-		prediction, err := svc.GetMenstrualPrediction(c.Request.Context(), targetID)
+		prediction, err := svc.GetMenstrualPrediction(c.Request.Context(), userID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, model.Error(404, err.Error()))
 			return

@@ -29,7 +29,11 @@ func HandleWebSocket(c *gin.Context, hub *service.WSHub) {
 		return
 	}
 
-	userID := middleware.GetUserID(c)
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -37,79 +41,59 @@ func HandleWebSocket(c *gin.Context, hub *service.WSHub) {
 		return
 	}
 
-	client := &wsClient{
-		hub:      hub,
-		conn:     conn,
-		userID:   userID,
-		ledgerID: ledgerID,
-		send:     make(chan []byte, 256),
-	}
+	client := service.NewWSClient(hub, conn, userID, ledgerID)
+	hub.Register(client)
 
-	hub.Register(newWSClientWrapper(client))
-
-	go client.writePump()
-	go client.readPump()
+	go writePump(client)
+	go readPump(client, hub)
 }
 
-type wsClient struct {
-	hub      *service.WSHub
-	conn     *websocket.Conn
-	userID   uuid.UUID
-	ledgerID uuid.UUID
-	send     chan []byte
-}
-
-func newWSClientWrapper(c *wsClient) *service.WSClient {
-	// Note: In production, WSClient should be an interface or the hub
-	// should work with a different abstraction. This is simplified.
-	return nil // Placeholder - needs proper integration
-}
-
-func (c *wsClient) readPump() {
+func readPump(client *service.WSClient, hub *service.WSHub) {
 	defer func() {
-		c.conn.Close()
+		hub.Unregister(client)
+		client.Conn.Close()
 	}()
-	c.conn.SetReadLimit(65536)
-	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	c.conn.SetPongHandler(func(string) error {
-		c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	client.Conn.SetReadLimit(65536)
+	client.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	client.Conn.SetPongHandler(func(string) error {
+		client.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
 	})
 
 	for {
-		_, message, err := c.conn.ReadMessage()
+		_, message, err := client.Conn.ReadMessage()
 		if err != nil {
 			break
 		}
-		c.hub.Broadcast(&service.WSMessage{
-			LedgerID: c.ledgerID,
+		hub.Broadcast(&service.WSMessage{
+			LedgerID: client.LedgerID(),
 			Data:     message,
-			SenderID: c.userID,
+			SenderID: client.UserID(),
 		})
 	}
 }
 
-func (c *wsClient) writePump() {
+func writePump(client *service.WSClient) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {
 		ticker.Stop()
-		c.conn.Close()
+		client.Conn.Close()
 	}()
 
 	for {
 		select {
-		case message, ok := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		case message, ok := <-client.Send():
+			client.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				client.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
+			if err := client.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
 				return
 			}
 		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			client.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := client.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
 		}

@@ -112,6 +112,9 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*m
 	if err != nil || !token.Valid {
 		return nil, errors.New("刷新令牌无效")
 	}
+	if claims.TokenType != "refresh" {
+		return nil, errors.New("无效的令牌类型")
+	}
 
 	userID, _ := uuid.Parse(claims.UserID)
 	user, err := s.userRepo.GetByID(ctx, userID)
@@ -125,7 +128,8 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*m
 func (s *AuthService) generateTokens(user *model.User) (*model.AuthResponse, error) {
 	// Access token (72h)
 	accessClaims := middleware.Claims{
-		UserID: user.ID.String(),
+		UserID:    user.ID.String(),
+		TokenType: "access",
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(s.cfg.JWTExpiry) * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -139,7 +143,8 @@ func (s *AuthService) generateTokens(user *model.User) (*model.AuthResponse, err
 
 	// Refresh token (30d)
 	refreshClaims := middleware.Claims{
-		UserID: user.ID.String(),
+		UserID:    user.ID.String(),
+		TokenType: "refresh",
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * 24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

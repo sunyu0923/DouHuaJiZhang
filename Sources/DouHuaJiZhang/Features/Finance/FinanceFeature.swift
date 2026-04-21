@@ -132,5 +132,11 @@ struct FinanceFeature {
                 return .none
             }
         }
+        .ifLet(\.$addInvestment, action: \.addInvestment) {
+            EmptyReducer()
+        }
+        .ifLet(\.$investmentDetail, action: \.investmentDetail) {
+            EmptyReducer()
+        }
     }
 }

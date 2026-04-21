@@ -242,5 +242,11 @@ struct HealthRecordFeature {
                 return .none
             }
         }
+        .ifLet(\.$addPoopRecord, action: \.addPoopRecord) {
+            EmptyReducer()
+        }
+        .ifLet(\.$addMenstrualRecord, action: \.addMenstrualRecord) {
+            EmptyReducer()
+        }
     }
 }

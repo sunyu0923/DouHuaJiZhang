@@ -69,6 +69,7 @@ struct AuthFeature {
         case loginResponse(Result<AuthResponse, APIError>)
         case registerResponse(Result<AuthResponse, APIError>)
         case loginSuccess(User)
+        case unlockAccount
         case dismissError
     }
     
@@ -183,7 +184,7 @@ struct AuthFeature {
                     state.errorMessage = "登录失败次数过多，请10分钟后再试"
                     return .run { [clock] send in
                         try await clock.sleep(for: .seconds(600))
-                        // Would need to unlock here
+                        await send(.unlockAccount)
                     }
                 } else {
                     state.errorMessage = error.localizedDescription
@@ -206,6 +207,12 @@ struct AuthFeature {
                 
             case .loginSuccess:
                 // Handled by parent (AppFeature)
+                return .none
+                
+            case .unlockAccount:
+                state.isLocked = false
+                state.failedAttempts = 0
+                state.errorMessage = nil
                 return .none
                 
             case .dismissError:

@@ -1,6 +1,9 @@
 package model
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -45,6 +48,29 @@ type LedgerMember struct {
 // VectorClock 向量时钟
 type VectorClock struct {
 	Clocks map[string]int `json:"clocks"`
+}
+
+// Scan implements sql.Scanner for JSONB
+func (vc *VectorClock) Scan(src interface{}) error {
+	if src == nil {
+		vc.Clocks = make(map[string]int)
+		return nil
+	}
+	var data []byte
+	switch v := src.(type) {
+	case []byte:
+		data = v
+	case string:
+		data = []byte(v)
+	default:
+		return fmt.Errorf("cannot scan %T into VectorClock", src)
+	}
+	return json.Unmarshal(data, vc)
+}
+
+// Value implements driver.Valuer for JSONB
+func (vc VectorClock) Value() (driver.Value, error) {
+	return json.Marshal(vc)
 }
 
 // Transaction 账单

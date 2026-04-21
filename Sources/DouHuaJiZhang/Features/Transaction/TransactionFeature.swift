@@ -185,11 +185,22 @@ struct TransactionFeature {
     
     private func evaluateExpression(_ expression: String) -> Decimal? {
         // 简单表达式求值：支持 +−×÷
-        var expr = expression
+        let expr = expression
             .replacingOccurrences(of: "×", with: "*")
             .replacingOccurrences(of: "÷", with: "/")
         
-        let nsExpression = NSExpression(format: expr)
+        // 过滤不安全的表达式 (防止 NSExpression crash)
+        let validChars = CharacterSet(charactersIn: "0123456789.+-*/() ")
+        guard expr.unicodeScalars.allSatisfy({ validChars.contains($0) }),
+              !expr.isEmpty,
+              !"+-*/".contains(expr.last!) else {
+            return nil
+        }
+        
+        // 防除零
+        if expr.contains("/0") { return nil }
+        
+        guard let nsExpression = try? NSExpression(format: expr) else { return nil }
         if let result = nsExpression.expressionValue(with: nil, context: nil) as? NSNumber {
             return result.decimalValue
         }
