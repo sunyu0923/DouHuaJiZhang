@@ -50,37 +50,134 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 DouHuaJiZhang/
 ├── Package.swift
+├── run_tests.sh                    # 测试运行脚本 (macOS/Linux)
+├── run_tests.ps1                   # 测试运行脚本 (Windows)
 ├── Sources/
 │   └── DouHuaJiZhang/
 │       ├── App/                    # App 入口、根 Store
 │       │   ├── DouHuaJiZhangApp.swift
-│       │   └── AppReducer.swift
+│       │   ├── AppFeature.swift    # 根 Reducer（Tab 路由 + 认证）
+│       │   └── ContentView.swift
 │       │
-│       ├── Features/               # 功能模块（每个模块独立 Reducer）
-│       │   ├── Auth/               # 登录/注册/OAuth
-│       │   ├── Ledger/             # 账本管理（首页/切换/家庭组）
-│       │   ├── Transaction/        # 记账（新增/编辑/删除/计算器）
-│       │   ├── Statistics/         # 统计图表（饼图/折线图）
+│       ├── Features/               # 功能模块（每个模块 Reducer + View）
+│       │   ├── Auth/               # 登录/注册
+│       │   │   ├── AuthFeature.swift
+│       │   │   └── AuthView.swift
+│       │   ├── Ledger/             # 账本管理（首页/切换）
+│       │   │   ├── LedgerFeature.swift
+│       │   │   └── LedgerView.swift
+│       │   ├── Transaction/        # 记账（计算器输入 + 分类选择）
+│       │   │   ├── TransactionFeature.swift
+│       │   │   └── TransactionView.swift
 │       │   ├── Savings/            # 攒钱计划
-│       │   ├── Finance/            # 理财管理（行情/投资）
-│       │   ├── HealthRecord/       # 生理记录（拉屎/月经）
-│       │   ├── Settings/           # 个人设置/勋章/主题
-│       │   └── Sync/               # 协同同步（WebSocket + 冲突解决）
+│       │   │   ├── SavingsFeature.swift
+│       │   │   └── SavingsView.swift
+│       │   ├── Finance/            # 理财管理（行情 + 投资）
+│       │   │   ├── FinanceFeature.swift
+│       │   │   └── FinanceView.swift
+│       │   ├── HealthRecord/       # 生理记录（拉屎 + 月经）
+│       │   │   ├── HealthRecordFeature.swift
+│       │   │   └── HealthRecordView.swift
+│       │   └── Settings/           # 个人设置/勋章
+│       │       ├── SettingsFeature.swift
+│       │       └── SettingsView.swift
 │       │
 │       ├── Core/
 │       │   ├── Models/             # Swift 值类型 Domain Models
-│       │   ├── Network/            # APIClient（依赖注入）
+│       │   │   ├── User.swift
+│       │   │   ├── Ledger.swift        # Ledger + VectorClock + LedgerMember
+│       │   │   ├── Transaction.swift
+│       │   │   ├── TransactionCategory.swift  # 30 支出 + 9 收入分类
+│       │   │   ├── SavingsPlan.swift    # SavingsPlan + SavingsProgress
+│       │   │   ├── Investment.swift     # Investment + MarketQuote
+│       │   │   ├── HealthRecord.swift   # PoopRecord + MenstrualRecord
+│       │   │   ├── Badge.swift
+│       │   │   └── SyncOperation.swift
+│       │   ├── Network/            # APIClient（@DependencyClient）
+│       │   │   └── APIClient.swift     # APIError + DTOs + 40+ endpoints
 │       │   ├── WebSocket/          # 实时同步客户端
-│       │   ├── Persistence/        # SwiftData Store
+│       │   │   └── WebSocketClient.swift
 │       │   └── Keychain/           # Token 安全存储
+│       │       └── KeychainClient.swift  # @DependencyClient
 │       │
 │       └── UI/
 │           ├── DesignSystem/       # 颜色/字体/间距 Token
+│           │   └── DesignSystem.swift
 │           ├── Components/         # 可复用 SwiftUI 组件
+│           │   └── Components.swift
 │           └── DouhuaIP/           # 豆花 IP 形象和语句系统
+│               └── DouhuaQuoteManager.swift  # 37 场景 × 多条语句
 │
-└── Tests/
-    └── DouHuaJiZhangTests/
+├── Tests/
+│   └── DouHuaJiZhangTests/
+│       ├── Core/
+│       │   ├── Models/             # 模型单元测试
+│       │   │   ├── UserTests.swift
+│       │   │   ├── TransactionModelTests.swift
+│       │   │   ├── TransactionCategoryTests.swift
+│       │   │   ├── LedgerModelTests.swift      # 含 VectorClock 测试
+│       │   │   ├── SavingsPlanTests.swift       # 含 SavingsProgress 测试
+│       │   │   ├── InvestmentModelTests.swift   # 含 profit/profitRate 测试
+│       │   │   ├── HealthRecordModelTests.swift
+│       │   │   ├── BadgeTests.swift
+│       │   │   └── SyncOperationModelTests.swift
+│       │   └── Network/
+│       │       └── APITypesTests.swift         # APIError + DTO 测试
+│       ├── Features/               # Feature Reducer 测试（TCA TestStore）
+│       │   ├── AppFeatureTests.swift
+│       │   ├── AuthFeatureTests.swift       # 登录/注册/锁定/OTP
+│       │   ├── LedgerFeatureTests.swift     # 月份导航/数据加载
+│       │   ├── TransactionFeatureTests.swift # 计算器全按键测试
+│       │   ├── SavingsFeatureTests.swift    # 目标保存/修改
+│       │   ├── FinanceFeatureTests.swift    # 行情/投资增删
+│       │   ├── HealthRecordFeatureTests.swift # 拉屎/月经记录
+│       │   └── SettingsFeatureTests.swift   # 个人信息/勋章/登出
+│       └── UI/
+│           └── DouhuaQuoteManagerTests.swift # IP 语句覆盖测试
+│
+└── server/                         # Go 后端服务
+    ├── go.mod
+    ├── go.sum
+    ├── cmd/
+    │   └── api/
+    │       └── main.go             # 应用入口（路由注册、优雅关停）
+    ├── internal/
+    │   ├── config/
+    │   │   └── config.go           # 环境变量配置加载
+    │   ├── model/
+    │   │   ├── model.go            # Domain Models（User, Ledger, Transaction 等）
+    │   │   └── dto.go              # 请求/响应 DTO + APIResponse
+    │   ├── middleware/
+    │   │   ├── auth.go             # JWT 认证中间件 + Claims
+    │   │   └── middleware.go       # CORS、RequestID、RateLimiter
+    │   ├── service/
+    │   │   ├── services.go         # 业务逻辑（User/Ledger/Transaction/Savings/Investment/Health）
+    │   │   ├── auth_service.go     # 认证服务（登录/注册/验证码/刷新Token）
+    │   │   ├── ws_hub.go           # WebSocket Hub（广播/注册/注销）
+    │   │   └── generate_code_test.go # 未导出函数 generateCode 的包内测试
+    │   ├── handler/
+    │   │   ├── handlers.go         # HTTP 路由处理器（8 组路由注册）
+    │   │   └── websocket.go        # WebSocket 升级 + 读写 Pump
+    │   └── repository/
+    │       ├── user_repo.go
+    │       ├── ledger_repo.go
+    │       ├── transaction_repo.go
+    │       ├── savings_repo.go
+    │       ├── investment_repo.go
+    │       ├── health_repo.go
+    │       └── badge_repo.go
+    └── tests/                      # 后端单元测试（独立于 internal）
+        ├── model/
+        │   ├── model_test.go       # VectorClock、JSON 序列化、模型字段
+        │   └── dto_test.go         # DTO 验证、APIResponse、分页
+        ├── middleware/
+        │   └── middleware_test.go   # JWT 认证、CORS、RequestID
+        ├── service/
+        │   └── service_test.go     # 业务逻辑验证、月经预测算法、WSHub
+        ├── handler/
+        │   └── handler_test.go     # HTTP 端点测试（请求绑定、鉴权检查）
+        └── config/
+            └── config_test.go      # 配置加载、环境变量覆盖
 ```
 
 ---
@@ -158,10 +255,98 @@ struct SyncOperation: Codable { operationId, ledgerId, userId, type, payload, ve
 
 ## 构建 & 运行
 
+### iOS 客户端
+
 ```bash
 # 用 Xcode 打开项目
 open Package.swift
 
 # 或直接用 xcodebuild
 xcodebuild -scheme DouHuaJiZhang -destination 'platform=iOS Simulator,name=iPhone 16'
+
+# 运行 Swift 单元测试
+swift test
+# 或
+xcodebuild test -scheme DouHuaJiZhang -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
+
+### Go 后端
+
+```bash
+# 进入后端目录
+cd server
+
+# 运行所有 Go 测试
+go test ./... -v -count=1
+
+# 仅运行 tests/ 目录下的测试（独立于 internal）
+go test ./tests/... -v -count=1
+
+# 生成测试覆盖率报告
+go test ./... -coverprofile=coverage.out -count=1
+go tool cover -html=coverage.out -o coverage.html
+
+# 启动后端服务
+go run ./cmd/api
+```
+
+### 一键测试脚本
+
+```bash
+# macOS / Linux
+./run_tests.sh              # 运行全部测试（Swift + Go）
+./run_tests.sh go           # 仅 Go 测试
+./run_tests.sh go cover     # Go 测试 + 覆盖率
+./run_tests.sh go tests     # 仅 tests/ 目录
+./run_tests.sh swift        # 仅 Swift 测试
+
+# Windows PowerShell
+.\run_tests.ps1              # 运行全部测试
+.\run_tests.ps1 go           # 仅 Go 测试
+.\run_tests.ps1 go -GoOption cover  # Go + 覆盖率
+```
+
+---
+
+## 测试规范
+
+### 测试组织
+
+#### iOS 测试
+- **模型测试** (`Tests/.../Core/Models/`): 测试 init 默认值、computed properties、Codable 序列化、Equatable
+- **Feature 测试** (`Tests/.../Features/`): 使用 TCA `TestStore` 进行 Reducer 状态机测试
+- **UI 测试** (`Tests/.../UI/`): 测试 DouhuaQuoteManager 语句覆盖率
+
+#### Go 后端测试
+测试文件统一放在 `server/tests/` 目录下，与 `internal/` 分离，便于管理：
+- **模型测试** (`tests/model/`): VectorClock Scan/Value、JSON 序列化、DTO 验证、APIResponse
+- **中间件测试** (`tests/middleware/`): JWT 认证、CORS 头、RequestID 生成
+- **服务测试** (`tests/service/`): 业务验证逻辑、月经预测算法、WSHub 通信
+- **处理器测试** (`tests/handler/`): HTTP 请求绑定验证、鉴权检查（httptest）
+- **配置测试** (`tests/config/`): 默认值、环境变量覆盖
+
+### TCA 测试模式
+```swift
+// 1. 创建 TestStore，用 withDependencies 注入 mock
+let store = TestStore(initialState: SomeFeature.State()) {
+    SomeFeature()
+} withDependencies: {
+    $0.apiClient.fetchXxx = { ... }  // @DependencyClient 自动生成 testValue
+}
+
+// 2. 发送 Action，断言 State 变化
+await store.send(.someAction) { $0.someField = expectedValue }
+
+// 3. 接收异步 Action
+await store.receive(\.someResponse) { $0.isLoading = false }
+
+// 4. 非确定性并行 Effect 用 skipReceivedActions()
+await store.skipReceivedActions()
+```
+
+### 测试要点
+- VectorClock: increment/merged/happenedBefore（并发/顺序/相同）
+- 计算器: 全 18 键、小数限制 2 位、表达式求值、防除零
+- 认证: 3 次失败锁定、10 分钟自动解锁（TestClock）、OTP 倒计时
+- 攒钱: canModify 修改限制、SavingsProgress 状态判定
+- 投资: profit/profitRate 计算、总额联动
