@@ -28,51 +28,124 @@ struct WelcomeView: View {
     let store: StoreOf<AuthFeature>
     
     var body: some View {
-        VStack(spacing: DesignSystem.Spacing.xxl) {
-            Spacer()
-            
-            // 豆花形象
-            DouhuaIPView(
-                size: .large,
-                mood: .waving,
-                showQuote: true,
-                quote: DouhuaQuoteManager.randomQuote(for: .welcome)
+        ZStack {
+            Image("LoginHero")
+                .resizable()
+                .scaledToFill()
+                .ignoresSafeArea()
+
+            VStack {
+                Spacer()
+
+                VStack(spacing: 14) {
+                    AuthLandingButton(
+                        title: "手机号登录",
+                        icon: "iphone",
+                        style: .phone
+                    ) {
+                        store.send(.setMode(.login))
+                    }
+
+                    AuthLandingButton(
+                        title: "微信登录",
+                        icon: "WeChatIcon",
+                        style: .wechat
+                    ) {
+                        store.send(.loginWithWechat)
+                    }
+
+                    AuthLandingButton(
+                        title: "注册",
+                        icon: nil,
+                        style: .register
+                    ) {
+                        store.send(.setMode(.register))
+                    }
+
+                    Button {
+                        store.send(.setMode(.login))
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("忘记密码？")
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.95))
+                    }
+                    .padding(.top, 6)
+                }
+                .padding(.horizontal, 36)
+                .padding(.bottom, 52)
+            }
+        }
+    }
+}
+
+private struct AuthLandingButton: View {
+    let title: String
+    let icon: String?
+    let style: Style
+    let action: () -> Void
+
+    enum Style {
+        case phone
+        case wechat
+        case register
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                if let icon {
+                    if style == .wechat {
+                        Image(icon)
+                            .resizable()
+                            .renderingMode(.template)
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                    } else {
+                        Image(systemName: icon)
+                            .font(.system(size: 22, weight: .semibold))
+                    }
+                }
+                Text(title)
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+            }
+            .foregroundStyle(foreground)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 18)
+            .background(
+                RoundedRectangle(cornerRadius: 40)
+                    .fill(background)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 40)
+                            .stroke(borderColor, lineWidth: borderColor == .clear ? 0 : 2)
+                    )
             )
-            
-            // Logo & Slogan
-            VStack(spacing: DesignSystem.Spacing.xs) {
-                Text("豆花记账")
-                    .font(DesignSystem.Typography.largeTitle)
-                    .foregroundStyle(DesignSystem.Colors.balance)
-                
-                Text("豆花陪你，记好每一笔钱")
-                    .font(DesignSystem.Typography.body)
-                    .foregroundStyle(DesignSystem.Colors.secondaryText)
-            }
-            
-            Spacer()
-            
-            // Buttons
-            VStack(spacing: DesignSystem.Spacing.sm) {
-                RoundedButton("手机号登录") {
-                    store.send(.setMode(.login))
-                }
-                
-                RoundedButton("微信登录", style: .secondary) {
-                    store.send(.loginWithWechat)
-                }
-                
-                Button {
-                    store.send(.setMode(.register))
-                } label: {
-                    Text("注册")
-                        .font(DesignSystem.Typography.button)
-                        .foregroundStyle(DesignSystem.Colors.primary)
-                }
-                .padding(.top, DesignSystem.Spacing.xs)
-            }
-            .padding(.horizontal, DesignSystem.Spacing.xxl)
-            .padding(.bottom, DesignSystem.Spacing.xxxl)
+        }
+    }
+
+    private var background: Color {
+        switch style {
+        case .phone: return .white.opacity(0.96)
+        case .wechat: return .white.opacity(0.02)
+        case .register: return Color(hex: "6F4CD7")
+        }
+    }
+
+    private var foreground: Color {
+        switch style {
+        case .phone: return Color(hex: "6F4CD7")
+        case .wechat: return .white.opacity(0.95)
+        case .register: return .white
+        }
+    }
+
+    private var borderColor: Color {
+        switch style {
+        case .wechat: return .white.opacity(0.75)
+        default: return .clear
         }
     }
 }
@@ -153,6 +226,19 @@ struct LoginView: View {
                 store.send(.login)
             }
             .padding(.horizontal, DesignSystem.Spacing.xxl)
+            .overlay {
+                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.extraLarge)
+                    .stroke(Color(hex: "6F4CD7"), lineWidth: store.isMockAccountMatched ? 2 : 0)
+                    .padding(.horizontal, DesignSystem.Spacing.xxl)
+            }
+            .shadow(
+                color: Color(hex: "6F4CD7").opacity(store.isMockAccountMatched ? 0.45 : 0),
+                radius: store.isMockAccountMatched ? 14 : 0,
+                x: 0,
+                y: store.isMockAccountMatched ? 6 : 0
+            )
+            .scaleEffect(store.isMockAccountMatched ? 1.02 : 1.0)
+            .animation(.easeInOut(duration: 0.2), value: store.isMockAccountMatched)
             
             if store.isLoading {
                 ProgressView()
