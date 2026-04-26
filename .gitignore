@@ -1,1 +1,32 @@
 .claude/
+
+# macOS
+.DS_Store
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Xcode user data / local state
+DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xccheckout
+*.moved-aside
+
+# Logs & temporary files
+*.log
+*.tmp
+
+# Env files (keep examples)
+**/.env
+**/.env.local
+**/.env.*.local
+!**/.env.example
+
+# Coverage artifacts
+*.profdata
+*.profraw
+coverage.out
+coverage.html

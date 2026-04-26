@@ -72,10 +72,10 @@ chmod +x start.sh
 ## iOS 客户端构建
 
 ```bash
-# 1. 在 macOS 上打开 Xcode 项目
-open Package.swift
+# 1. 在 macOS 上打开 iOS Host 工程
+open Sources/DouHuaJiZhangHost/DouHuaJiZhangHost.xcodeproj
 
-# 2. 选择 iPhone 16 模拟器作为目标设备
+# 2. 选择 DouHuaJiZhangHost Scheme 和 iPhone 模拟器
 
 # 3. ⌘+R 运行
 ```

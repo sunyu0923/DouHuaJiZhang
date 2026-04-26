@@ -68,10 +68,15 @@ extension WebSocketClient: DependencyKey {
         let baseURL = "wss://api.douhuajizhang.com/ws/sync"
         
         actor WebSocketActor {
+            private let baseURL: String
             private var task: URLSessionWebSocketTask?
             private var session: URLSession?
             private var state: WSConnectionState = .disconnected
             private var continuation: AsyncStream<WSMessage>.Continuation?
+
+            init(baseURL: String) {
+                self.baseURL = baseURL
+            }
             
             func connect(ledgerId: UUID, token: String) async throws {
                 state = .connecting
@@ -152,7 +157,7 @@ extension WebSocketClient: DependencyKey {
             func getState() -> WSConnectionState { state }
         }
         
-        let actor = WebSocketActor()
+        let actor = WebSocketActor(baseURL: baseURL)
         
         return WebSocketClient(
             connect: { ledgerId, token in
