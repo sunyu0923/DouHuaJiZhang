@@ -399,16 +399,14 @@ func TestCreateInvestment_NoAuth(t *testing.T) {
 }
 
 func TestDeleteInvestment_NoAuth(t *testing.T) {
-	// DELETE doesn't check auth, calls service directly → nil repo → panic → 500 (Recovery)
 	r := setupInvestmentRouter()
 	id := uuid.New().String()
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("DELETE", "/investments/"+id, nil)
 	r.ServeHTTP(w, req)
 
-	// Recovery middleware catches the nil pointer panic and returns 500
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500 from nil repo panic, got %d", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
 	}
 }
 
