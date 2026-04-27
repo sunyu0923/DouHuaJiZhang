@@ -116,11 +116,26 @@ func NewTransactionService(txRepo *repository.TransactionRepository, ledgerRepo 
 	return &TransactionService{txRepo: txRepo, ledgerRepo: ledgerRepo, rdb: rdb}
 }
 
-func (s *TransactionService) GetTransactions(ctx context.Context, ledgerID uuid.UUID, page, pageSize int) ([]model.Transaction, int64, error) {
+func (s *TransactionService) GetTransactions(ctx context.Context, ledgerID, userID uuid.UUID, page, pageSize int) ([]model.Transaction, int64, error) {
+	if s.ledgerRepo == nil {
+		return nil, 0, ErrForbidden
+	}
+	isMember, _, err := s.ledgerRepo.IsMember(ctx, ledgerID, userID)
+	if err != nil || !isMember {
+		return nil, 0, ErrForbidden
+	}
 	return s.txRepo.GetPaginated(ctx, ledgerID, page, pageSize)
 }
 
 func (s *TransactionService) CreateTransaction(ctx context.Context, ledgerID, userID uuid.UUID, req *model.CreateTransactionRequest) (*model.Transaction, error) {
+	if s.ledgerRepo == nil {
+		return nil, ErrForbidden
+	}
+	isMember, _, err := s.ledgerRepo.IsMember(ctx, ledgerID, userID)
+	if err != nil || !isMember {
+		return nil, ErrForbidden
+	}
+
 	opID, err := uuid.Parse(req.OperationID)
 	if err != nil {
 		return nil, fmt.Errorf("无效的操作ID: %w", err)
@@ -165,15 +180,43 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, ledgerID, us
 	return tx, nil
 }
 
-func (s *TransactionService) DeleteTransaction(ctx context.Context, id uuid.UUID) error {
-	return s.txRepo.Delete(ctx, id)
+func (s *TransactionService) DeleteTransaction(ctx context.Context, ledgerID, userID, id uuid.UUID) error {
+	if s.ledgerRepo == nil {
+		return ErrForbidden
+	}
+	isMember, _, err := s.ledgerRepo.IsMember(ctx, ledgerID, userID)
+	if err != nil || !isMember {
+		return ErrForbidden
+	}
+	deleted, err := s.txRepo.Delete(ctx, ledgerID, id)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return ErrNotFound
+	}
+	return nil
 }
 
-func (s *TransactionService) GetStatistics(ctx context.Context, ledgerID uuid.UUID, month, year int) (*model.StatisticsData, error) {
+func (s *TransactionService) GetStatistics(ctx context.Context, ledgerID, userID uuid.UUID, month, year int) (*model.StatisticsData, error) {
+	if s.ledgerRepo == nil {
+		return nil, ErrForbidden
+	}
+	isMember, _, err := s.ledgerRepo.IsMember(ctx, ledgerID, userID)
+	if err != nil || !isMember {
+		return nil, ErrForbidden
+	}
 	return s.txRepo.GetStatistics(ctx, ledgerID, month, year)
 }
 
-func (s *TransactionService) GetCalendar(ctx context.Context, ledgerID uuid.UUID, month, year int) ([]model.CalendarDayData, error) {
+func (s *TransactionService) GetCalendar(ctx context.Context, ledgerID, userID uuid.UUID, month, year int) ([]model.CalendarDayData, error) {
+	if s.ledgerRepo == nil {
+		return nil, ErrForbidden
+	}
+	isMember, _, err := s.ledgerRepo.IsMember(ctx, ledgerID, userID)
+	if err != nil || !isMember {
+		return nil, ErrForbidden
+	}
 	return s.txRepo.GetCalendarData(ctx, ledgerID, month, year)
 }
 
@@ -237,8 +280,15 @@ func (s *InvestmentService) CreateInvestment(ctx context.Context, inv *model.Inv
 	return s.investmentRepo.Create(ctx, inv)
 }
 
-func (s *InvestmentService) DeleteInvestment(ctx context.Context, id uuid.UUID) error {
-	return s.investmentRepo.Delete(ctx, id)
+func (s *InvestmentService) DeleteInvestment(ctx context.Context, id, userID uuid.UUID) error {
+	deleted, err := s.investmentRepo.Delete(ctx, id, userID)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *InvestmentService) GetMarketQuotes(ctx context.Context, category *string) ([]model.MarketQuote, error) {
@@ -265,8 +315,15 @@ func (s *HealthService) CreatePoopRecord(ctx context.Context, record *model.Poop
 	return s.healthRepo.CreatePoopRecord(ctx, record)
 }
 
-func (s *HealthService) DeletePoopRecord(ctx context.Context, id uuid.UUID) error {
-	return s.healthRepo.DeletePoopRecord(ctx, id)
+func (s *HealthService) DeletePoopRecord(ctx context.Context, id, userID uuid.UUID) error {
+	deleted, err := s.healthRepo.DeletePoopRecord(ctx, id, userID)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *HealthService) GetMenstrualRecords(ctx context.Context, userID uuid.UUID) ([]model.MenstrualRecord, error) {
@@ -280,8 +337,15 @@ func (s *HealthService) CreateMenstrualRecord(ctx context.Context, record *model
 	return s.healthRepo.CreateMenstrualRecord(ctx, record)
 }
 
-func (s *HealthService) DeleteMenstrualRecord(ctx context.Context, id uuid.UUID) error {
-	return s.healthRepo.DeleteMenstrualRecord(ctx, id)
+func (s *HealthService) DeleteMenstrualRecord(ctx context.Context, id, userID uuid.UUID) error {
+	deleted, err := s.healthRepo.DeleteMenstrualRecord(ctx, id, userID)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *HealthService) GetMenstrualPrediction(ctx context.Context, userID uuid.UUID) (*model.MenstrualPrediction, error) {

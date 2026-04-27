@@ -104,9 +104,12 @@ func (r *InvestmentRepository) GetByUserID(ctx context.Context, userID uuid.UUID
 	return list, nil
 }
 
-func (r *InvestmentRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM investments WHERE id = $1`, id)
-	return err
+func (r *InvestmentRepository) Delete(ctx context.Context, id, userID uuid.UUID) (bool, error) {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM investments WHERE id = $1 AND user_id = $2`, id, userID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // -------- Health --------
@@ -148,9 +151,12 @@ func (r *HealthRepository) GetPoopRecords(ctx context.Context, userID uuid.UUID,
 	return records, nil
 }
 
-func (r *HealthRepository) DeletePoopRecord(ctx context.Context, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM poop_records WHERE id = $1`, id)
-	return err
+func (r *HealthRepository) DeletePoopRecord(ctx context.Context, id, userID uuid.UUID) (bool, error) {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM poop_records WHERE id = $1 AND user_id = $2`, id, userID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 func (r *HealthRepository) CreateMenstrualRecord(ctx context.Context, record *model.MenstrualRecord) error {
@@ -183,9 +189,12 @@ func (r *HealthRepository) GetMenstrualRecords(ctx context.Context, userID uuid.
 	return records, nil
 }
 
-func (r *HealthRepository) DeleteMenstrualRecord(ctx context.Context, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM menstrual_records WHERE id = $1`, id)
-	return err
+func (r *HealthRepository) DeleteMenstrualRecord(ctx context.Context, id, userID uuid.UUID) (bool, error) {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM menstrual_records WHERE id = $1 AND user_id = $2`, id, userID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // -------- Badge --------
