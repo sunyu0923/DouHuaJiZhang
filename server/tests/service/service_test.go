@@ -136,7 +136,6 @@ func TestTransactionCreate_WrongDateFormat(t *testing.T) {
 }
 
 func TestTransactionCreate_VeryLargeAmount(t *testing.T) {
-	svc := service.NewTransactionService(nil, nil, nil)
 	req := &model.CreateTransactionRequest{
 		OperationID: uuid.New().String(),
 		Amount:      "9999999999999.99",
@@ -144,9 +143,6 @@ func TestTransactionCreate_VeryLargeAmount(t *testing.T) {
 		Category:    "餐饮",
 		Date:        "2025-06-01",
 	}
-	// This should pass validation (amount is valid), but fail at DB level
-	// Since we have nil repos, it will panic/fail at CheckOperationExists
-	// We just verify the amount parsing succeeds
 	amt, err := decimal.NewFromString(req.Amount)
 	if err != nil {
 		t.Fatalf("expected valid amount, got error: %v", err)
