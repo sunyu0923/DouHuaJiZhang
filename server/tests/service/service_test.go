@@ -135,8 +135,26 @@ func TestTransactionCreate_WrongDateFormat(t *testing.T) {
 	}
 }
 
-func TestTransactionCreate_VeryLargeAmount(t *testing.T) {
+func TestTransactionCreate_ValidInputRequiresLedgerMembership(t *testing.T) {
 	svc := service.NewTransactionService(nil, nil, nil)
+	req := &model.CreateTransactionRequest{
+		OperationID: uuid.New().String(),
+		Amount:      "100.00",
+		Type:        "expense",
+		Category:    "餐饮",
+		Date:        "2025-06-01",
+	}
+
+	_, err := svc.CreateTransaction(nil, uuid.New(), uuid.New(), req)
+	if err == nil {
+		t.Fatal("expected error without a ledger membership repository")
+	}
+	if err != service.ErrForbidden {
+		t.Fatalf("expected forbidden before transaction repository access, got %v", err)
+	}
+}
+
+func TestTransactionCreate_VeryLargeAmount(t *testing.T) {
 	req := &model.CreateTransactionRequest{
 		OperationID: uuid.New().String(),
 		Amount:      "9999999999999.99",
