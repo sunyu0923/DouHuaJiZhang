@@ -180,6 +180,36 @@ final class AuthFeatureTests: XCTestCase {
             $0.errorMessage = APIError.unauthorized.localizedDescription
         }
     }
+
+    func testLogin_testCredentialsDoNotBypassAPI() async {
+        let store = TestStore(
+            initialState: {
+                var state = AuthFeature.State()
+                state.phone = "15524809230"
+                state.password = "1234"
+                return state
+            }()
+        ) {
+            AuthFeature()
+        } withDependencies: {
+            $0.apiClient.login = { request in
+                XCTAssertEqual(request.phone, "15524809230")
+                XCTAssertEqual(request.password, "1234")
+                throw APIError.unauthorized
+            }
+        }
+
+        await store.send(.login) {
+            $0.isLoading = true
+            $0.errorMessage = nil
+        }
+
+        await store.receive(\.loginResponse.failure) {
+            $0.isLoading = false
+            $0.failedAttempts = 1
+            $0.errorMessage = APIError.unauthorized.localizedDescription
+        }
+    }
     
     func testLogin_threeFailures_locksAccount() async {
         let clock = TestClock()
