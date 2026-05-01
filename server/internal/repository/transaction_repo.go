@@ -73,8 +73,8 @@ func (r *TransactionRepository) GetPaginated(ctx context.Context, ledgerID uuid.
 	return txns, total, nil
 }
 
-func (r *TransactionRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM transactions WHERE id = $1`, id)
+func (r *TransactionRepository) DeleteFromLedger(ctx context.Context, ledgerID, id uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM transactions WHERE ledger_id = $1 AND id = $2`, ledgerID, id)
 	return err
 }
 
