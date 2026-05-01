@@ -29,6 +29,12 @@ type RefreshTokenRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
+// UpdateProfileRequest 更新个人资料
+type UpdateProfileRequest struct {
+	Nickname  *string `json:"nickname,omitempty"`
+	AvatarURL *string `json:"avatar_url,omitempty"`
+}
+
 // AuthResponse 认证响应
 type AuthResponse struct {
 	Token        string `json:"token"`
@@ -80,11 +86,11 @@ type PaginatedResponse struct {
 
 // StatisticsData 统计数据
 type StatisticsData struct {
-	TotalExpense      string            `json:"total_expense"`
-	TotalIncome       string            `json:"total_income"`
-	Balance           string            `json:"balance"`
-	CategoryBreakdown []CategoryAmount  `json:"category_breakdown"`
-	DailyTrend        []DailyAmount     `json:"daily_trend"`
+	TotalExpense      string           `json:"total_expense"`
+	TotalIncome       string           `json:"total_income"`
+	Balance           string           `json:"balance"`
+	CategoryBreakdown []CategoryAmount `json:"category_breakdown"`
+	DailyTrend        []DailyAmount    `json:"daily_trend"`
 }
 
 // CategoryAmount 分类金额

@@ -193,6 +193,20 @@ func TestCreateLedgerRequest_Fields(t *testing.T) {
 	}
 }
 
+func TestUpdateProfileRequest_DoesNotBindUserIdentity(t *testing.T) {
+	data := []byte(`{"id":"550e8400-e29b-41d4-a716-446655440000","phone":"13900139000","nickname":"豆花","avatar_url":"https://example.com/a.png"}`)
+	var req model.UpdateProfileRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if req.Nickname == nil || *req.Nickname != "豆花" {
+		t.Fatalf("expected nickname to bind, got %v", req.Nickname)
+	}
+	if req.AvatarURL == nil || *req.AvatarURL != "https://example.com/a.png" {
+		t.Fatalf("expected avatar_url to bind, got %v", req.AvatarURL)
+	}
+}
+
 func TestCreateTransactionRequest_Fields(t *testing.T) {
 	req := model.CreateTransactionRequest{
 		OperationID: "550e8400-e29b-41d4-a716-446655440000",
