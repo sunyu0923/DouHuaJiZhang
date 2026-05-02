@@ -4,9 +4,6 @@ import Foundation
 /// 认证 Feature — 登录/注册状态机
 @Reducer
 struct AuthFeature {
-    static let mockPhone = "15524809230"
-    static let mockPassword = "1234"
-    
     enum AuthMode: Equatable, Sendable {
         case welcome
         case login
@@ -47,12 +44,6 @@ struct AuthFeature {
         var canLogin: Bool {
             !phone.isEmpty && !isLoading && !isLocked &&
             (loginMethod == .password ? !password.isEmpty : !verificationCode.isEmpty)
-        }
-
-        var isMockAccountMatched: Bool {
-            loginMethod == .password &&
-            phone == AuthFeature.mockPhone &&
-            password == AuthFeature.mockPassword
         }
         
         var canRegister: Bool {
@@ -114,28 +105,6 @@ struct AuthFeature {
                 guard state.canLogin else { return .none }
                 state.isLoading = true
                 state.errorMessage = nil
-
-                // Local mock account for UI testing without backend dependency.
-                if state.loginMethod == .password,
-                   state.phone == Self.mockPhone,
-                   state.password == Self.mockPassword {
-                    let mockUser = User(
-                        id: UUID(uuidString: "7A8F8FC5-A8D7-4A4B-92F8-7E0E19A2A345") ?? UUID(),
-                        phone: Self.mockPhone,
-                        nickname: "豆花测试账号",
-                        avatarURL: nil,
-                        createdAt: Date()
-                    )
-                    let mockResponse = AuthResponse(
-                        token: "mock-token-douhua",
-                        refreshToken: "mock-refresh-token-douhua",
-                        user: mockUser
-                    )
-                    return .run { send in
-                        await send(.loginResponse(.success(mockResponse)))
-                    }
-                }
-
                 let request = LoginRequest(
                     phone: state.phone,
                     password: state.loginMethod == .password ? state.password : nil,

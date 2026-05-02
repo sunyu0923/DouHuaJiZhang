@@ -155,6 +155,50 @@ final class AuthFeatureTests: XCTestCase {
         await store.receive(\.loginSuccess)
     }
     
+    func testLogin_withPreviouslyMockedCredentialsUsesAPI() async {
+        let testUser = User(phone: "15524809230", nickname: "真实账号")
+        let testResponse = AuthResponse(token: "server-token", refreshToken: "server-refresh", user: testUser)
+        var receivedRequest: LoginRequest?
+        
+        let store = TestStore(
+            initialState: {
+                var state = AuthFeature.State()
+                state.phone = "15524809230"
+                state.password = "1234"
+                return state
+            }()
+        ) {
+            AuthFeature()
+        } withDependencies: {
+            $0.apiClient.login = { request in
+                receivedRequest = request
+                return testResponse
+            }
+            $0.keychainClient.saveToken = { token in
+                XCTAssertEqual(token, "server-token")
+            }
+            $0.keychainClient.saveRefreshToken = { refreshToken in
+                XCTAssertEqual(refreshToken, "server-refresh")
+            }
+            $0.keychainClient.saveUserId = { _ in }
+        }
+        
+        await store.send(.login) {
+            $0.isLoading = true
+            $0.errorMessage = nil
+        }
+        
+        await store.receive(\.loginResponse.success) {
+            $0.isLoading = false
+            $0.failedAttempts = 0
+        }
+        
+        await store.receive(\.loginSuccess)
+        XCTAssertEqual(receivedRequest?.phone, "15524809230")
+        XCTAssertEqual(receivedRequest?.password, "1234")
+        XCTAssertNil(receivedRequest?.verificationCode)
+    }
+    
     func testLogin_failure_incrementsAttempts() async {
         let store = TestStore(
             initialState: {
