@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/douhuajizhang/server/internal/middleware"
+	"github.com/douhuajizhang/server/internal/model"
 	"github.com/douhuajizhang/server/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -21,7 +22,7 @@ var upgrader = websocket.Upgrader{
 }
 
 // HandleWebSocket 处理 WebSocket 连接
-func HandleWebSocket(c *gin.Context, hub *service.WSHub) {
+func HandleWebSocket(c *gin.Context, hub *service.WSHub, ledgerSvc *service.LedgerService) {
 	ledgerIDStr := c.Query("ledger_id")
 	ledgerID, err := uuid.Parse(ledgerIDStr)
 	if err != nil {
@@ -32,6 +33,17 @@ func HandleWebSocket(c *gin.Context, hub *service.WSHub) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	if err := ledgerSvc.IsMember(c.Request.Context(), ledgerID, userID); err != nil {
+		status := http.StatusInternalServerError
+		if err == service.ErrForbidden {
+			status = http.StatusForbidden
+		} else {
+			log.Printf("WebSocket ledger membership check failed: %v", err)
+		}
+		c.JSON(status, model.Error(status, "没有权限"))
 		return
 	}
 
