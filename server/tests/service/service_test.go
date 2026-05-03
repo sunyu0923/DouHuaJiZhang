@@ -136,7 +136,6 @@ func TestTransactionCreate_WrongDateFormat(t *testing.T) {
 }
 
 func TestTransactionCreate_VeryLargeAmount(t *testing.T) {
-	svc := service.NewTransactionService(nil, nil, nil)
 	req := &model.CreateTransactionRequest{
 		OperationID: uuid.New().String(),
 		Amount:      "9999999999999.99",

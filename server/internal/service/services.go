@@ -71,6 +71,14 @@ func (s *LedgerService) GetByID(ctx context.Context, id uuid.UUID) (*model.Ledge
 	return s.ledgerRepo.GetByID(ctx, id)
 }
 
+func (s *LedgerService) IsMember(ctx context.Context, ledgerID, userID uuid.UUID) error {
+	isMember, _, err := s.ledgerRepo.IsMember(ctx, ledgerID, userID)
+	if err != nil || !isMember {
+		return ErrForbidden
+	}
+	return nil
+}
+
 func (s *LedgerService) Delete(ctx context.Context, ledgerID, userID uuid.UUID) error {
 	isMember, role, err := s.ledgerRepo.IsMember(ctx, ledgerID, userID)
 	if err != nil || !isMember || role != "owner" {
@@ -133,19 +141,9 @@ func (s *TransactionService) GetTransactions(ctx context.Context, ledgerID, user
 }
 
 func (s *TransactionService) CreateTransaction(ctx context.Context, ledgerID, userID uuid.UUID, req *model.CreateTransactionRequest) (*model.Transaction, error) {
-	if err := s.ensureLedgerMember(ctx, ledgerID, userID); err != nil {
-		return nil, err
-	}
-
 	opID, err := uuid.Parse(req.OperationID)
 	if err != nil {
 		return nil, fmt.Errorf("无效的操作ID: %w", err)
-	}
-
-	// Idempotency check
-	exists, _ := s.txRepo.CheckOperationExists(ctx, opID)
-	if exists {
-		return nil, ErrConflict
 	}
 
 	amount, err := decimal.NewFromString(req.Amount)
@@ -159,6 +157,16 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, ledgerID, us
 	date, err := time.Parse("2006-01-02", req.Date)
 	if err != nil {
 		return nil, fmt.Errorf("无效的日期格式: %w", err)
+	}
+
+	if err := s.ensureLedgerMember(ctx, ledgerID, userID); err != nil {
+		return nil, err
+	}
+
+	// Idempotency check
+	exists, _ := s.txRepo.CheckOperationExists(ctx, opID)
+	if exists {
+		return nil, ErrConflict
 	}
 
 	tx := &model.Transaction{
