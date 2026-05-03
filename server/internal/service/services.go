@@ -26,7 +26,8 @@ func (s *UserService) GetProfile(ctx context.Context, userID uuid.UUID) (*model.
 	return s.userRepo.GetByID(ctx, userID)
 }
 
-func (s *UserService) UpdateProfile(ctx context.Context, user *model.User) error {
+func (s *UserService) UpdateProfile(ctx context.Context, userID uuid.UUID, user *model.User) error {
+	user.ID = userID
 	return s.userRepo.Update(ctx, user)
 }
 
@@ -68,6 +69,14 @@ func (s *LedgerService) CreateLedger(ctx context.Context, userID uuid.UUID, req 
 
 func (s *LedgerService) GetByID(ctx context.Context, id uuid.UUID) (*model.Ledger, error) {
 	return s.ledgerRepo.GetByID(ctx, id)
+}
+
+func (s *LedgerService) IsMember(ctx context.Context, ledgerID, userID uuid.UUID) error {
+	isMember, _, err := s.ledgerRepo.IsMember(ctx, ledgerID, userID)
+	if err != nil || !isMember {
+		return ErrForbidden
+	}
+	return nil
 }
 
 func (s *LedgerService) Delete(ctx context.Context, ledgerID, userID uuid.UUID) error {
@@ -116,7 +125,18 @@ func NewTransactionService(txRepo *repository.TransactionRepository, ledgerRepo 
 	return &TransactionService{txRepo: txRepo, ledgerRepo: ledgerRepo, rdb: rdb}
 }
 
-func (s *TransactionService) GetTransactions(ctx context.Context, ledgerID uuid.UUID, page, pageSize int) ([]model.Transaction, int64, error) {
+func (s *TransactionService) ensureLedgerMember(ctx context.Context, ledgerID, userID uuid.UUID) error {
+	isMember, _, err := s.ledgerRepo.IsMember(ctx, ledgerID, userID)
+	if err != nil || !isMember {
+		return ErrForbidden
+	}
+	return nil
+}
+
+func (s *TransactionService) GetTransactions(ctx context.Context, ledgerID, userID uuid.UUID, page, pageSize int) ([]model.Transaction, int64, error) {
+	if err := s.ensureLedgerMember(ctx, ledgerID, userID); err != nil {
+		return nil, 0, err
+	}
 	return s.txRepo.GetPaginated(ctx, ledgerID, page, pageSize)
 }
 
@@ -124,12 +144,6 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, ledgerID, us
 	opID, err := uuid.Parse(req.OperationID)
 	if err != nil {
 		return nil, fmt.Errorf("无效的操作ID: %w", err)
-	}
-
-	// Idempotency check
-	exists, _ := s.txRepo.CheckOperationExists(ctx, opID)
-	if exists {
-		return nil, ErrConflict
 	}
 
 	amount, err := decimal.NewFromString(req.Amount)
@@ -143,6 +157,16 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, ledgerID, us
 	date, err := time.Parse("2006-01-02", req.Date)
 	if err != nil {
 		return nil, fmt.Errorf("无效的日期格式: %w", err)
+	}
+
+	if err := s.ensureLedgerMember(ctx, ledgerID, userID); err != nil {
+		return nil, err
+	}
+
+	// Idempotency check
+	exists, _ := s.txRepo.CheckOperationExists(ctx, opID)
+	if exists {
+		return nil, ErrConflict
 	}
 
 	tx := &model.Transaction{
@@ -165,15 +189,24 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, ledgerID, us
 	return tx, nil
 }
 
-func (s *TransactionService) DeleteTransaction(ctx context.Context, id uuid.UUID) error {
-	return s.txRepo.Delete(ctx, id)
+func (s *TransactionService) DeleteTransaction(ctx context.Context, ledgerID, userID, id uuid.UUID) error {
+	if err := s.ensureLedgerMember(ctx, ledgerID, userID); err != nil {
+		return err
+	}
+	return s.txRepo.Delete(ctx, ledgerID, id)
 }
 
-func (s *TransactionService) GetStatistics(ctx context.Context, ledgerID uuid.UUID, month, year int) (*model.StatisticsData, error) {
+func (s *TransactionService) GetStatistics(ctx context.Context, ledgerID, userID uuid.UUID, month, year int) (*model.StatisticsData, error) {
+	if err := s.ensureLedgerMember(ctx, ledgerID, userID); err != nil {
+		return nil, err
+	}
 	return s.txRepo.GetStatistics(ctx, ledgerID, month, year)
 }
 
-func (s *TransactionService) GetCalendar(ctx context.Context, ledgerID uuid.UUID, month, year int) ([]model.CalendarDayData, error) {
+func (s *TransactionService) GetCalendar(ctx context.Context, ledgerID, userID uuid.UUID, month, year int) ([]model.CalendarDayData, error) {
+	if err := s.ensureLedgerMember(ctx, ledgerID, userID); err != nil {
+		return nil, err
+	}
 	return s.txRepo.GetCalendarData(ctx, ledgerID, month, year)
 }
 
@@ -202,6 +235,9 @@ func (s *SavingsService) GetProgress(ctx context.Context, planID, userID uuid.UU
 	plan, err := s.savingsRepo.GetByID(ctx, planID)
 	if err != nil {
 		return nil, err
+	}
+	if plan.UserID != userID {
+		return nil, ErrForbidden
 	}
 	income, expense, err := s.txRepo.MonthlyTotals(ctx, userID, plan.Month, plan.Year)
 	if err != nil {
@@ -237,8 +273,8 @@ func (s *InvestmentService) CreateInvestment(ctx context.Context, inv *model.Inv
 	return s.investmentRepo.Create(ctx, inv)
 }
 
-func (s *InvestmentService) DeleteInvestment(ctx context.Context, id uuid.UUID) error {
-	return s.investmentRepo.Delete(ctx, id)
+func (s *InvestmentService) DeleteInvestment(ctx context.Context, id, userID uuid.UUID) error {
+	return s.investmentRepo.Delete(ctx, id, userID)
 }
 
 func (s *InvestmentService) GetMarketQuotes(ctx context.Context, category *string) ([]model.MarketQuote, error) {
@@ -265,8 +301,8 @@ func (s *HealthService) CreatePoopRecord(ctx context.Context, record *model.Poop
 	return s.healthRepo.CreatePoopRecord(ctx, record)
 }
 
-func (s *HealthService) DeletePoopRecord(ctx context.Context, id uuid.UUID) error {
-	return s.healthRepo.DeletePoopRecord(ctx, id)
+func (s *HealthService) DeletePoopRecord(ctx context.Context, id, userID uuid.UUID) error {
+	return s.healthRepo.DeletePoopRecord(ctx, id, userID)
 }
 
 func (s *HealthService) GetMenstrualRecords(ctx context.Context, userID uuid.UUID) ([]model.MenstrualRecord, error) {
@@ -280,8 +316,8 @@ func (s *HealthService) CreateMenstrualRecord(ctx context.Context, record *model
 	return s.healthRepo.CreateMenstrualRecord(ctx, record)
 }
 
-func (s *HealthService) DeleteMenstrualRecord(ctx context.Context, id uuid.UUID) error {
-	return s.healthRepo.DeleteMenstrualRecord(ctx, id)
+func (s *HealthService) DeleteMenstrualRecord(ctx context.Context, id, userID uuid.UUID) error {
+	return s.healthRepo.DeleteMenstrualRecord(ctx, id, userID)
 }
 
 func (s *HealthService) GetMenstrualPrediction(ctx context.Context, userID uuid.UUID) (*model.MenstrualPrediction, error) {
