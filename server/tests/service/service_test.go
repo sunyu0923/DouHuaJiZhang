@@ -1,6 +1,8 @@
 package service_test
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -9,6 +11,48 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
+
+type stubTransactionRepo struct {
+	getPaginatedCalled bool
+	deleteLedgerID     uuid.UUID
+	deleteID           uuid.UUID
+}
+
+func (r *stubTransactionRepo) Create(context.Context, *model.Transaction) error {
+	return nil
+}
+
+func (r *stubTransactionRepo) GetPaginated(context.Context, uuid.UUID, int, int) ([]model.Transaction, int64, error) {
+	r.getPaginatedCalled = true
+	return []model.Transaction{}, 0, nil
+}
+
+func (r *stubTransactionRepo) Delete(_ context.Context, ledgerID, id uuid.UUID) error {
+	r.deleteLedgerID = ledgerID
+	r.deleteID = id
+	return nil
+}
+
+func (r *stubTransactionRepo) GetStatistics(context.Context, uuid.UUID, int, int) (*model.StatisticsData, error) {
+	return &model.StatisticsData{}, nil
+}
+
+func (r *stubTransactionRepo) GetCalendarData(context.Context, uuid.UUID, int, int) ([]model.CalendarDayData, error) {
+	return []model.CalendarDayData{}, nil
+}
+
+func (r *stubTransactionRepo) CheckOperationExists(context.Context, uuid.UUID) (bool, error) {
+	return false, nil
+}
+
+type stubLedgerMembershipRepo struct {
+	isMember bool
+	err      error
+}
+
+func (r stubLedgerMembershipRepo) IsMember(context.Context, uuid.UUID, uuid.UUID) (bool, string, error) {
+	return r.isMember, "member", r.err
+}
 
 // ============ Sentinel Errors Tests ============
 
@@ -136,7 +180,6 @@ func TestTransactionCreate_WrongDateFormat(t *testing.T) {
 }
 
 func TestTransactionCreate_VeryLargeAmount(t *testing.T) {
-	svc := service.NewTransactionService(nil, nil, nil)
 	req := &model.CreateTransactionRequest{
 		OperationID: uuid.New().String(),
 		Amount:      "9999999999999.99",
@@ -153,6 +196,37 @@ func TestTransactionCreate_VeryLargeAmount(t *testing.T) {
 	}
 	if amt.LessThanOrEqual(decimal.Zero) {
 		t.Error("expected positive amount")
+	}
+}
+
+func TestTransactionRead_RejectsNonMember(t *testing.T) {
+	txRepo := &stubTransactionRepo{}
+	svc := service.NewTransactionService(txRepo, stubLedgerMembershipRepo{isMember: false}, nil)
+
+	_, _, err := svc.GetTransactions(context.Background(), uuid.New(), uuid.New(), 1, 20)
+	if !errors.Is(err, service.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+	if txRepo.getPaginatedCalled {
+		t.Fatal("transaction repository should not be queried for a non-member")
+	}
+}
+
+func TestTransactionDelete_ScopesDeleteToLedgerForMember(t *testing.T) {
+	txRepo := &stubTransactionRepo{}
+	svc := service.NewTransactionService(txRepo, stubLedgerMembershipRepo{isMember: true}, nil)
+	ledgerID := uuid.New()
+	txID := uuid.New()
+
+	err := svc.DeleteTransaction(context.Background(), ledgerID, uuid.New(), txID)
+	if err != nil {
+		t.Fatalf("expected delete to succeed, got %v", err)
+	}
+	if txRepo.deleteLedgerID != ledgerID {
+		t.Fatalf("expected delete ledger ID %s, got %s", ledgerID, txRepo.deleteLedgerID)
+	}
+	if txRepo.deleteID != txID {
+		t.Fatalf("expected delete transaction ID %s, got %s", txID, txRepo.deleteID)
 	}
 }
 
