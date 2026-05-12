@@ -4,8 +4,10 @@ import Foundation
 /// 认证 Feature — 登录/注册状态机
 @Reducer
 struct AuthFeature {
+    #if DEBUG
     static let mockPhone = "15524809230"
     static let mockPassword = "1234"
+    #endif
     
     enum AuthMode: Equatable, Sendable {
         case welcome
@@ -50,9 +52,13 @@ struct AuthFeature {
         }
 
         var isMockAccountMatched: Bool {
+            #if DEBUG
             loginMethod == .password &&
             phone == AuthFeature.mockPhone &&
             password == AuthFeature.mockPassword
+            #else
+            false
+            #endif
         }
         
         var canRegister: Bool {
@@ -115,6 +121,7 @@ struct AuthFeature {
                 state.isLoading = true
                 state.errorMessage = nil
 
+                #if DEBUG
                 // Local mock account for UI testing without backend dependency.
                 if state.loginMethod == .password,
                    state.phone == Self.mockPhone,
@@ -135,6 +142,7 @@ struct AuthFeature {
                         await send(.loginResponse(.success(mockResponse)))
                     }
                 }
+                #endif
 
                 let request = LoginRequest(
                     phone: state.phone,
