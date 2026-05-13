@@ -91,7 +91,7 @@ func main() {
 	wsHub := service.NewWSHub(rdb)
 	go wsHub.Run()
 	r.GET("/ws", middleware.AuthRequired(cfg.JWTSecret), func(c *gin.Context) {
-		handler.HandleWebSocket(c, wsHub)
+		handler.HandleWebSocket(c, wsHub, ledgerService)
 	})
 
 	// HTTP Server
