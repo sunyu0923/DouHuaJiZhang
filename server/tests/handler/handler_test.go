@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -198,6 +199,51 @@ func setupLedgerRouter() *gin.Engine {
 	return r
 }
 
+type fakeTransactionService struct {
+	getLedgerID    uuid.UUID
+	getUserID      uuid.UUID
+	getErr         error
+	deleteLedgerID uuid.UUID
+	deleteUserID   uuid.UUID
+	deleteTxID     uuid.UUID
+	deleteErr      error
+}
+
+func (f *fakeTransactionService) GetTransactions(ctx context.Context, ledgerID, userID uuid.UUID, page, pageSize int) ([]model.Transaction, int64, error) {
+	f.getLedgerID = ledgerID
+	f.getUserID = userID
+	return nil, 0, f.getErr
+}
+
+func (f *fakeTransactionService) CreateTransaction(ctx context.Context, ledgerID, userID uuid.UUID, req *model.CreateTransactionRequest) (*model.Transaction, error) {
+	return nil, nil
+}
+
+func (f *fakeTransactionService) DeleteTransaction(ctx context.Context, ledgerID, userID, id uuid.UUID) error {
+	f.deleteLedgerID = ledgerID
+	f.deleteUserID = userID
+	f.deleteTxID = id
+	return f.deleteErr
+}
+
+func (f *fakeTransactionService) GetStatistics(ctx context.Context, ledgerID, userID uuid.UUID, month, year int) (*model.StatisticsData, error) {
+	return nil, nil
+}
+
+func (f *fakeTransactionService) GetCalendar(ctx context.Context, ledgerID, userID uuid.UUID, month, year int) ([]model.CalendarDayData, error) {
+	return nil, nil
+}
+
+func setupTransactionRouterWithUser(userID uuid.UUID, txSvc *fakeTransactionService) *gin.Engine {
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("userID", userID)
+		c.Next()
+	})
+	handler.RegisterTransactionRoutes(r.Group("/ledgers"), txSvc)
+	return r
+}
+
 func TestGetLedgers_NoAuth(t *testing.T) {
 	r := setupLedgerRouter()
 	w := httptest.NewRecorder()
@@ -317,6 +363,52 @@ func TestCreateTransaction_NoAuth(t *testing.T) {
 	}
 }
 
+func TestGetTransactions_ForbiddenWhenUserIsNotLedgerMember(t *testing.T) {
+	userID := uuid.New()
+	ledgerID := uuid.New()
+	txSvc := &fakeTransactionService{getErr: service.ErrForbidden}
+	r := setupTransactionRouterWithUser(userID, txSvc)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/ledgers/"+ledgerID.String()+"/transactions", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-member ledger read, got %d", w.Code)
+	}
+	if txSvc.getUserID != userID {
+		t.Errorf("expected authenticated userID %s, got %s", userID, txSvc.getUserID)
+	}
+	if txSvc.getLedgerID != ledgerID {
+		t.Errorf("expected ledgerID %s, got %s", ledgerID, txSvc.getLedgerID)
+	}
+}
+
+func TestDeleteTransaction_UsesPathLedgerAndAuthenticatedUser(t *testing.T) {
+	userID := uuid.New()
+	ledgerID := uuid.New()
+	txID := uuid.New()
+	txSvc := &fakeTransactionService{}
+	r := setupTransactionRouterWithUser(userID, txSvc)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("DELETE", "/ledgers/"+ledgerID.String()+"/transactions/"+txID.String(), nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if txSvc.deleteUserID != userID {
+		t.Errorf("expected authenticated userID %s, got %s", userID, txSvc.deleteUserID)
+	}
+	if txSvc.deleteLedgerID != ledgerID {
+		t.Errorf("expected path ledgerID %s, got %s", ledgerID, txSvc.deleteLedgerID)
+	}
+	if txSvc.deleteTxID != txID {
+		t.Errorf("expected txID %s, got %s", txID, txSvc.deleteTxID)
+	}
+}
+
 // ============ Savings Handler Tests ============
 
 func setupSavingsRouter() *gin.Engine {
@@ -399,16 +491,14 @@ func TestCreateInvestment_NoAuth(t *testing.T) {
 }
 
 func TestDeleteInvestment_NoAuth(t *testing.T) {
-	// DELETE doesn't check auth, calls service directly → nil repo → panic → 500 (Recovery)
 	r := setupInvestmentRouter()
 	id := uuid.New().String()
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("DELETE", "/investments/"+id, nil)
 	r.ServeHTTP(w, req)
 
-	// Recovery middleware catches the nil pointer panic and returns 500
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500 from nil repo panic, got %d", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
 	}
 }
 
