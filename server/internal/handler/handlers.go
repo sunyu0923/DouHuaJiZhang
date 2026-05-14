@@ -96,9 +96,16 @@ func RegisterUserRoutes(r *gin.RouterGroup, svc *service.UserService) {
 			c.JSON(http.StatusNotFound, model.Error(404, "用户不存在"))
 			return
 		}
-		if err := c.ShouldBindJSON(user); err != nil {
+		var req model.UpdateProfileRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, model.Error(400, err.Error()))
 			return
+		}
+		if req.Nickname != nil && *req.Nickname != "" {
+			user.Nickname = *req.Nickname
+		}
+		if req.AvatarURL != nil {
+			user.AvatarURL = req.AvatarURL
 		}
 		if err := svc.UpdateProfile(c.Request.Context(), user); err != nil {
 			c.JSON(http.StatusInternalServerError, model.Error(500, err.Error()))
@@ -211,10 +218,19 @@ func RegisterLedgerRoutes(r *gin.RouterGroup, svc *service.LedgerService) {
 func RegisterTransactionRoutes(r *gin.RouterGroup, svc *service.TransactionService) {
 	r.GET("/:id/transactions", func(c *gin.Context) {
 		ledgerID, _ := uuid.Parse(c.Param("id"))
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 		pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-		txns, total, err := svc.GetTransactions(c.Request.Context(), ledgerID, page, pageSize)
+		txns, total, err := svc.GetTransactions(c.Request.Context(), ledgerID, userID, page, pageSize)
 		if err != nil {
+			if err == service.ErrForbidden {
+				c.JSON(http.StatusForbidden, model.Error(403, err.Error()))
+				return
+			}
 			c.JSON(http.StatusInternalServerError, model.Error(500, err.Error()))
 			return
 		}
@@ -241,6 +257,10 @@ func RegisterTransactionRoutes(r *gin.RouterGroup, svc *service.TransactionServi
 				c.JSON(http.StatusConflict, model.Error(409, "操作已存在"))
 				return
 			}
+			if err == service.ErrForbidden {
+				c.JSON(http.StatusForbidden, model.Error(403, err.Error()))
+				return
+			}
 			c.JSON(http.StatusInternalServerError, model.Error(500, err.Error()))
 			return
 		}
@@ -248,8 +268,22 @@ func RegisterTransactionRoutes(r *gin.RouterGroup, svc *service.TransactionServi
 	})
 
 	r.DELETE("/:id/transactions/:txId", func(c *gin.Context) {
+		ledgerID, _ := uuid.Parse(c.Param("id"))
 		txID, _ := uuid.Parse(c.Param("txId"))
-		if err := svc.DeleteTransaction(c.Request.Context(), txID); err != nil {
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
+		if err := svc.DeleteTransaction(c.Request.Context(), ledgerID, txID, userID); err != nil {
+			if err == service.ErrForbidden {
+				c.JSON(http.StatusForbidden, model.Error(403, err.Error()))
+				return
+			}
+			if err == service.ErrNotFound {
+				c.JSON(http.StatusNotFound, model.Error(404, err.Error()))
+				return
+			}
 			c.JSON(http.StatusInternalServerError, model.Error(500, err.Error()))
 			return
 		}
@@ -259,10 +293,19 @@ func RegisterTransactionRoutes(r *gin.RouterGroup, svc *service.TransactionServi
 	// Statistics
 	r.GET("/:id/statistics", func(c *gin.Context) {
 		ledgerID, _ := uuid.Parse(c.Param("id"))
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		month, _ := strconv.Atoi(c.Query("month"))
 		year, _ := strconv.Atoi(c.Query("year"))
-		stats, err := svc.GetStatistics(c.Request.Context(), ledgerID, month, year)
+		stats, err := svc.GetStatistics(c.Request.Context(), ledgerID, userID, month, year)
 		if err != nil {
+			if err == service.ErrForbidden {
+				c.JSON(http.StatusForbidden, model.Error(403, err.Error()))
+				return
+			}
 			c.JSON(http.StatusInternalServerError, model.Error(500, err.Error()))
 			return
 		}
@@ -271,10 +314,19 @@ func RegisterTransactionRoutes(r *gin.RouterGroup, svc *service.TransactionServi
 
 	r.GET("/:id/calendar", func(c *gin.Context) {
 		ledgerID, _ := uuid.Parse(c.Param("id"))
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
 		month, _ := strconv.Atoi(c.Query("month"))
 		year, _ := strconv.Atoi(c.Query("year"))
-		data, err := svc.GetCalendar(c.Request.Context(), ledgerID, month, year)
+		data, err := svc.GetCalendar(c.Request.Context(), ledgerID, userID, month, year)
 		if err != nil {
+			if err == service.ErrForbidden {
+				c.JSON(http.StatusForbidden, model.Error(403, err.Error()))
+				return
+			}
 			c.JSON(http.StatusInternalServerError, model.Error(500, err.Error()))
 			return
 		}
@@ -327,6 +379,10 @@ func RegisterSavingsRoutes(r *gin.RouterGroup, svc *service.SavingsService) {
 		}
 		progress, err := svc.GetProgress(c.Request.Context(), planID, userID)
 		if err != nil {
+			if err == service.ErrForbidden {
+				c.JSON(http.StatusForbidden, model.Error(403, err.Error()))
+				return
+			}
 			c.JSON(http.StatusNotFound, model.Error(404, err.Error()))
 			return
 		}
@@ -371,7 +427,16 @@ func RegisterInvestmentRoutes(r *gin.RouterGroup, svc *service.InvestmentService
 
 	r.DELETE("/:id", func(c *gin.Context) {
 		id, _ := uuid.Parse(c.Param("id"))
-		if err := svc.DeleteInvestment(c.Request.Context(), id); err != nil {
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
+		if err := svc.DeleteInvestment(c.Request.Context(), id, userID); err != nil {
+			if err == service.ErrNotFound {
+				c.JSON(http.StatusNotFound, model.Error(404, err.Error()))
+				return
+			}
 			c.JSON(http.StatusInternalServerError, model.Error(500, err.Error()))
 			return
 		}
@@ -436,7 +501,16 @@ func RegisterHealthRoutes(r *gin.RouterGroup, svc *service.HealthService) {
 
 	r.DELETE("/poop/:id", func(c *gin.Context) {
 		id, _ := uuid.Parse(c.Param("id"))
-		if err := svc.DeletePoopRecord(c.Request.Context(), id); err != nil {
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
+		if err := svc.DeletePoopRecord(c.Request.Context(), id, userID); err != nil {
+			if err == service.ErrNotFound {
+				c.JSON(http.StatusNotFound, model.Error(404, err.Error()))
+				return
+			}
 			c.JSON(http.StatusInternalServerError, model.Error(500, err.Error()))
 			return
 		}
@@ -479,7 +553,16 @@ func RegisterHealthRoutes(r *gin.RouterGroup, svc *service.HealthService) {
 
 	r.DELETE("/menstrual/:id", func(c *gin.Context) {
 		id, _ := uuid.Parse(c.Param("id"))
-		if err := svc.DeleteMenstrualRecord(c.Request.Context(), id); err != nil {
+		userID, ok := middleware.GetUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, model.Error(401, "未认证"))
+			return
+		}
+		if err := svc.DeleteMenstrualRecord(c.Request.Context(), id, userID); err != nil {
+			if err == service.ErrNotFound {
+				c.JSON(http.StatusNotFound, model.Error(404, err.Error()))
+				return
+			}
 			c.JSON(http.StatusInternalServerError, model.Error(500, err.Error()))
 			return
 		}
