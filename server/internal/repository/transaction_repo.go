@@ -6,6 +6,7 @@ import (
 
 	"github.com/douhuajizhang/server/internal/model"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 )
@@ -73,8 +74,14 @@ func (r *TransactionRepository) GetPaginated(ctx context.Context, ledgerID uuid.
 	return txns, total, nil
 }
 
-func (r *TransactionRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM transactions WHERE id = $1`, id)
+func (r *TransactionRepository) Delete(ctx context.Context, ledgerID, id uuid.UUID) error {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM transactions WHERE id = $1 AND ledger_id = $2`, id, ledgerID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
 	return err
 }
 
