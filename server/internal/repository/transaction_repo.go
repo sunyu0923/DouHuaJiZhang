@@ -78,6 +78,14 @@ func (r *TransactionRepository) Delete(ctx context.Context, id uuid.UUID) error 
 	return err
 }
 
+func (r *TransactionRepository) DeleteFromLedger(ctx context.Context, ledgerID, id uuid.UUID) (bool, error) {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM transactions WHERE ledger_id = $1 AND id = $2`, ledgerID, id)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
 func (r *TransactionRepository) GetStatistics(ctx context.Context, ledgerID uuid.UUID, month, year int) (*model.StatisticsData, error) {
 	datePrefix := fmt.Sprintf("%04d-%02d", year, month)
 

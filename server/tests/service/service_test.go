@@ -1,6 +1,8 @@
 package service_test
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -136,7 +138,6 @@ func TestTransactionCreate_WrongDateFormat(t *testing.T) {
 }
 
 func TestTransactionCreate_VeryLargeAmount(t *testing.T) {
-	svc := service.NewTransactionService(nil, nil, nil)
 	req := &model.CreateTransactionRequest{
 		OperationID: uuid.New().String(),
 		Amount:      "9999999999999.99",
@@ -153,6 +154,221 @@ func TestTransactionCreate_VeryLargeAmount(t *testing.T) {
 	}
 	if amt.LessThanOrEqual(decimal.Zero) {
 		t.Error("expected positive amount")
+	}
+}
+
+type fakeLedgerMembershipRepo struct {
+	isMember bool
+	role     string
+	err      error
+	calls    int
+}
+
+func (f *fakeLedgerMembershipRepo) IsMember(ctx context.Context, ledgerID, userID uuid.UUID) (bool, string, error) {
+	f.calls++
+	return f.isMember, f.role, f.err
+}
+
+type fakeTransactionRepo struct {
+	getCalls            int
+	checkOperationCalls int
+	createCalls         int
+	deleteCalls         int
+	statisticsCalls     int
+	calendarCalls       int
+	deleteResult        bool
+}
+
+func (f *fakeTransactionRepo) GetPaginated(ctx context.Context, ledgerID uuid.UUID, page, pageSize int) ([]model.Transaction, int64, error) {
+	f.getCalls++
+	return nil, 0, nil
+}
+
+func (f *fakeTransactionRepo) CheckOperationExists(ctx context.Context, operationID uuid.UUID) (bool, error) {
+	f.checkOperationCalls++
+	return false, nil
+}
+
+func (f *fakeTransactionRepo) Create(ctx context.Context, tx *model.Transaction) error {
+	f.createCalls++
+	return nil
+}
+
+func (f *fakeTransactionRepo) DeleteFromLedger(ctx context.Context, ledgerID, id uuid.UUID) (bool, error) {
+	f.deleteCalls++
+	return f.deleteResult, nil
+}
+
+func (f *fakeTransactionRepo) GetStatistics(ctx context.Context, ledgerID uuid.UUID, month, year int) (*model.StatisticsData, error) {
+	f.statisticsCalls++
+	return &model.StatisticsData{}, nil
+}
+
+func (f *fakeTransactionRepo) GetCalendarData(ctx context.Context, ledgerID uuid.UUID, month, year int) ([]model.CalendarDayData, error) {
+	f.calendarCalls++
+	return nil, nil
+}
+
+func (f *fakeTransactionRepo) MonthlyTotals(ctx context.Context, userID uuid.UUID, month, year int) (decimal.Decimal, decimal.Decimal, error) {
+	return decimal.Zero, decimal.Zero, nil
+}
+
+func validCreateTransactionRequest() *model.CreateTransactionRequest {
+	return &model.CreateTransactionRequest{
+		OperationID: uuid.New().String(),
+		Amount:      "100.00",
+		Type:        "expense",
+		Category:    "餐饮",
+		Date:        "2025-06-01",
+	}
+}
+
+func TestTransactionGet_NonMemberForbidden(t *testing.T) {
+	txRepo := &fakeTransactionRepo{}
+	ledgerRepo := &fakeLedgerMembershipRepo{isMember: false}
+	svc := service.NewTransactionService(txRepo, ledgerRepo, nil)
+
+	_, _, err := svc.GetTransactions(context.Background(), uuid.New(), uuid.New(), 1, 20)
+	if !errors.Is(err, service.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+	if txRepo.getCalls != 0 {
+		t.Fatalf("expected transactions not to be read, got %d reads", txRepo.getCalls)
+	}
+}
+
+func TestTransactionCreate_NonMemberCannotProbeOperationID(t *testing.T) {
+	txRepo := &fakeTransactionRepo{}
+	ledgerRepo := &fakeLedgerMembershipRepo{isMember: false}
+	svc := service.NewTransactionService(txRepo, ledgerRepo, nil)
+
+	_, err := svc.CreateTransaction(context.Background(), uuid.New(), uuid.New(), validCreateTransactionRequest())
+	if !errors.Is(err, service.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+	if txRepo.checkOperationCalls != 0 {
+		t.Fatalf("expected idempotency key not to be probed, got %d probes", txRepo.checkOperationCalls)
+	}
+	if txRepo.createCalls != 0 {
+		t.Fatalf("expected transaction not to be created, got %d creates", txRepo.createCalls)
+	}
+}
+
+func TestTransactionDelete_NonMemberForbidden(t *testing.T) {
+	txRepo := &fakeTransactionRepo{deleteResult: true}
+	ledgerRepo := &fakeLedgerMembershipRepo{isMember: false}
+	svc := service.NewTransactionService(txRepo, ledgerRepo, nil)
+
+	err := svc.DeleteTransaction(context.Background(), uuid.New(), uuid.New(), uuid.New())
+	if !errors.Is(err, service.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+	if txRepo.deleteCalls != 0 {
+		t.Fatalf("expected transaction not to be deleted, got %d deletes", txRepo.deleteCalls)
+	}
+}
+
+func TestTransactionDelete_WrongLedgerForbidden(t *testing.T) {
+	txRepo := &fakeTransactionRepo{deleteResult: false}
+	ledgerRepo := &fakeLedgerMembershipRepo{isMember: true, role: "member"}
+	svc := service.NewTransactionService(txRepo, ledgerRepo, nil)
+
+	err := svc.DeleteTransaction(context.Background(), uuid.New(), uuid.New(), uuid.New())
+	if !errors.Is(err, service.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+	if txRepo.deleteCalls != 1 {
+		t.Fatalf("expected scoped delete attempt, got %d", txRepo.deleteCalls)
+	}
+}
+
+type fakeInvestmentRepo struct {
+	deleteResult bool
+	deleteCalls  int
+}
+
+func (f *fakeInvestmentRepo) GetByUserID(ctx context.Context, userID uuid.UUID) ([]model.Investment, error) {
+	return nil, nil
+}
+
+func (f *fakeInvestmentRepo) Create(ctx context.Context, inv *model.Investment) error {
+	return nil
+}
+
+func (f *fakeInvestmentRepo) DeleteByUser(ctx context.Context, id, userID uuid.UUID) (bool, error) {
+	f.deleteCalls++
+	return f.deleteResult, nil
+}
+
+func TestInvestmentDelete_NotOwnedForbidden(t *testing.T) {
+	repo := &fakeInvestmentRepo{deleteResult: false}
+	svc := service.NewInvestmentService(repo)
+
+	err := svc.DeleteInvestment(context.Background(), uuid.New(), uuid.New())
+	if !errors.Is(err, service.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+	if repo.deleteCalls != 1 {
+		t.Fatalf("expected ownership-scoped delete, got %d calls", repo.deleteCalls)
+	}
+}
+
+type fakeHealthRepo struct {
+	poopDeleteResult      bool
+	menstrualDeleteResult bool
+	poopDeleteCalls       int
+	menstrualDeleteCalls  int
+}
+
+func (f *fakeHealthRepo) GetPoopRecords(ctx context.Context, userID uuid.UUID, month, year int) ([]model.PoopRecord, error) {
+	return nil, nil
+}
+
+func (f *fakeHealthRepo) CreatePoopRecord(ctx context.Context, record *model.PoopRecord) error {
+	return nil
+}
+
+func (f *fakeHealthRepo) DeletePoopRecordByUser(ctx context.Context, id, userID uuid.UUID) (bool, error) {
+	f.poopDeleteCalls++
+	return f.poopDeleteResult, nil
+}
+
+func (f *fakeHealthRepo) GetMenstrualRecords(ctx context.Context, userID uuid.UUID) ([]model.MenstrualRecord, error) {
+	return nil, nil
+}
+
+func (f *fakeHealthRepo) CreateMenstrualRecord(ctx context.Context, record *model.MenstrualRecord) error {
+	return nil
+}
+
+func (f *fakeHealthRepo) DeleteMenstrualRecordByUser(ctx context.Context, id, userID uuid.UUID) (bool, error) {
+	f.menstrualDeleteCalls++
+	return f.menstrualDeleteResult, nil
+}
+
+func TestHealthDeletePoop_NotOwnedForbidden(t *testing.T) {
+	repo := &fakeHealthRepo{poopDeleteResult: false}
+	svc := service.NewHealthService(repo)
+
+	err := svc.DeletePoopRecord(context.Background(), uuid.New(), uuid.New())
+	if !errors.Is(err, service.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+	if repo.poopDeleteCalls != 1 {
+		t.Fatalf("expected ownership-scoped delete, got %d calls", repo.poopDeleteCalls)
+	}
+}
+
+func TestHealthDeleteMenstrual_NotOwnedForbidden(t *testing.T) {
+	repo := &fakeHealthRepo{menstrualDeleteResult: false}
+	svc := service.NewHealthService(repo)
+
+	err := svc.DeleteMenstrualRecord(context.Background(), uuid.New(), uuid.New())
+	if !errors.Is(err, service.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+	if repo.menstrualDeleteCalls != 1 {
+		t.Fatalf("expected ownership-scoped delete, got %d calls", repo.menstrualDeleteCalls)
 	}
 }
 

@@ -36,11 +36,25 @@ func (s *UserService) GetBadges(ctx context.Context, userID uuid.UUID) ([]model.
 
 // LedgerService 账本服务
 type LedgerService struct {
-	ledgerRepo *repository.LedgerRepository
-	userRepo   *repository.UserRepository
+	ledgerRepo ledgerRepository
+	userRepo   ledgerUserRepository
 }
 
-func NewLedgerService(ledgerRepo *repository.LedgerRepository, userRepo *repository.UserRepository) *LedgerService {
+type ledgerRepository interface {
+	GetByUserID(ctx context.Context, userID uuid.UUID) ([]model.Ledger, error)
+	Create(ctx context.Context, ledger *model.Ledger) error
+	GetByID(ctx context.Context, id uuid.UUID) (*model.Ledger, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+	AddMember(ctx context.Context, member *model.LedgerMember) error
+	RemoveMember(ctx context.Context, ledgerID, userID uuid.UUID) error
+	IsMember(ctx context.Context, ledgerID, userID uuid.UUID) (bool, string, error)
+}
+
+type ledgerUserRepository interface {
+	GetByPhone(ctx context.Context, phone string) (*model.User, error)
+}
+
+func NewLedgerService(ledgerRepo ledgerRepository, userRepo ledgerUserRepository) *LedgerService {
 	return &LedgerService{ledgerRepo: ledgerRepo, userRepo: userRepo}
 }
 
@@ -105,18 +119,51 @@ func (s *LedgerService) RemoveMember(ctx context.Context, ledgerID, removerID, t
 	return s.ledgerRepo.RemoveMember(ctx, ledgerID, targetID)
 }
 
+func (s *LedgerService) CanAccess(ctx context.Context, ledgerID, userID uuid.UUID) error {
+	isMember, _, err := s.ledgerRepo.IsMember(ctx, ledgerID, userID)
+	if err != nil || !isMember {
+		return ErrForbidden
+	}
+	return nil
+}
+
 // TransactionService 交易服务
 type TransactionService struct {
-	txRepo     *repository.TransactionRepository
-	ledgerRepo *repository.LedgerRepository
+	txRepo     transactionRepository
+	ledgerRepo ledgerMembershipRepository
 	rdb        interface{} // redis for idempotency
 }
 
-func NewTransactionService(txRepo *repository.TransactionRepository, ledgerRepo *repository.LedgerRepository, rdb interface{}) *TransactionService {
+type transactionRepository interface {
+	GetPaginated(ctx context.Context, ledgerID uuid.UUID, page, pageSize int) ([]model.Transaction, int64, error)
+	CheckOperationExists(ctx context.Context, operationID uuid.UUID) (bool, error)
+	Create(ctx context.Context, tx *model.Transaction) error
+	DeleteFromLedger(ctx context.Context, ledgerID, id uuid.UUID) (bool, error)
+	GetStatistics(ctx context.Context, ledgerID uuid.UUID, month, year int) (*model.StatisticsData, error)
+	GetCalendarData(ctx context.Context, ledgerID uuid.UUID, month, year int) ([]model.CalendarDayData, error)
+	MonthlyTotals(ctx context.Context, userID uuid.UUID, month, year int) (decimal.Decimal, decimal.Decimal, error)
+}
+
+type ledgerMembershipRepository interface {
+	IsMember(ctx context.Context, ledgerID, userID uuid.UUID) (bool, string, error)
+}
+
+func NewTransactionService(txRepo transactionRepository, ledgerRepo ledgerMembershipRepository, rdb interface{}) *TransactionService {
 	return &TransactionService{txRepo: txRepo, ledgerRepo: ledgerRepo, rdb: rdb}
 }
 
-func (s *TransactionService) GetTransactions(ctx context.Context, ledgerID uuid.UUID, page, pageSize int) ([]model.Transaction, int64, error) {
+func (s *TransactionService) ensureLedgerMember(ctx context.Context, ledgerID, userID uuid.UUID) error {
+	isMember, _, err := s.ledgerRepo.IsMember(ctx, ledgerID, userID)
+	if err != nil || !isMember {
+		return ErrForbidden
+	}
+	return nil
+}
+
+func (s *TransactionService) GetTransactions(ctx context.Context, ledgerID, userID uuid.UUID, page, pageSize int) ([]model.Transaction, int64, error) {
+	if err := s.ensureLedgerMember(ctx, ledgerID, userID); err != nil {
+		return nil, 0, err
+	}
 	return s.txRepo.GetPaginated(ctx, ledgerID, page, pageSize)
 }
 
@@ -124,12 +171,6 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, ledgerID, us
 	opID, err := uuid.Parse(req.OperationID)
 	if err != nil {
 		return nil, fmt.Errorf("无效的操作ID: %w", err)
-	}
-
-	// Idempotency check
-	exists, _ := s.txRepo.CheckOperationExists(ctx, opID)
-	if exists {
-		return nil, ErrConflict
 	}
 
 	amount, err := decimal.NewFromString(req.Amount)
@@ -143,6 +184,16 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, ledgerID, us
 	date, err := time.Parse("2006-01-02", req.Date)
 	if err != nil {
 		return nil, fmt.Errorf("无效的日期格式: %w", err)
+	}
+
+	if err := s.ensureLedgerMember(ctx, ledgerID, userID); err != nil {
+		return nil, err
+	}
+
+	// Only members may probe or consume operation IDs for a ledger.
+	exists, _ := s.txRepo.CheckOperationExists(ctx, opID)
+	if exists {
+		return nil, ErrConflict
 	}
 
 	tx := &model.Transaction{
@@ -165,15 +216,31 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, ledgerID, us
 	return tx, nil
 }
 
-func (s *TransactionService) DeleteTransaction(ctx context.Context, id uuid.UUID) error {
-	return s.txRepo.Delete(ctx, id)
+func (s *TransactionService) DeleteTransaction(ctx context.Context, ledgerID, id, userID uuid.UUID) error {
+	if err := s.ensureLedgerMember(ctx, ledgerID, userID); err != nil {
+		return err
+	}
+	deleted, err := s.txRepo.DeleteFromLedger(ctx, ledgerID, id)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return ErrForbidden
+	}
+	return nil
 }
 
-func (s *TransactionService) GetStatistics(ctx context.Context, ledgerID uuid.UUID, month, year int) (*model.StatisticsData, error) {
+func (s *TransactionService) GetStatistics(ctx context.Context, ledgerID, userID uuid.UUID, month, year int) (*model.StatisticsData, error) {
+	if err := s.ensureLedgerMember(ctx, ledgerID, userID); err != nil {
+		return nil, err
+	}
 	return s.txRepo.GetStatistics(ctx, ledgerID, month, year)
 }
 
-func (s *TransactionService) GetCalendar(ctx context.Context, ledgerID uuid.UUID, month, year int) ([]model.CalendarDayData, error) {
+func (s *TransactionService) GetCalendar(ctx context.Context, ledgerID, userID uuid.UUID, month, year int) ([]model.CalendarDayData, error) {
+	if err := s.ensureLedgerMember(ctx, ledgerID, userID); err != nil {
+		return nil, err
+	}
 	return s.txRepo.GetCalendarData(ctx, ledgerID, month, year)
 }
 
@@ -219,10 +286,16 @@ func (s *SavingsService) GetProgress(ctx context.Context, planID, userID uuid.UU
 
 // InvestmentService 投资服务
 type InvestmentService struct {
-	investmentRepo *repository.InvestmentRepository
+	investmentRepo investmentRepository
 }
 
-func NewInvestmentService(investmentRepo *repository.InvestmentRepository) *InvestmentService {
+type investmentRepository interface {
+	GetByUserID(ctx context.Context, userID uuid.UUID) ([]model.Investment, error)
+	Create(ctx context.Context, inv *model.Investment) error
+	DeleteByUser(ctx context.Context, id, userID uuid.UUID) (bool, error)
+}
+
+func NewInvestmentService(investmentRepo investmentRepository) *InvestmentService {
 	return &InvestmentService{investmentRepo: investmentRepo}
 }
 
@@ -237,8 +310,15 @@ func (s *InvestmentService) CreateInvestment(ctx context.Context, inv *model.Inv
 	return s.investmentRepo.Create(ctx, inv)
 }
 
-func (s *InvestmentService) DeleteInvestment(ctx context.Context, id uuid.UUID) error {
-	return s.investmentRepo.Delete(ctx, id)
+func (s *InvestmentService) DeleteInvestment(ctx context.Context, id, userID uuid.UUID) error {
+	deleted, err := s.investmentRepo.DeleteByUser(ctx, id, userID)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return ErrForbidden
+	}
+	return nil
 }
 
 func (s *InvestmentService) GetMarketQuotes(ctx context.Context, category *string) ([]model.MarketQuote, error) {
@@ -248,10 +328,19 @@ func (s *InvestmentService) GetMarketQuotes(ctx context.Context, category *strin
 
 // HealthService 健康服务
 type HealthService struct {
-	healthRepo *repository.HealthRepository
+	healthRepo healthRepository
 }
 
-func NewHealthService(healthRepo *repository.HealthRepository) *HealthService {
+type healthRepository interface {
+	GetPoopRecords(ctx context.Context, userID uuid.UUID, month, year int) ([]model.PoopRecord, error)
+	CreatePoopRecord(ctx context.Context, record *model.PoopRecord) error
+	DeletePoopRecordByUser(ctx context.Context, id, userID uuid.UUID) (bool, error)
+	GetMenstrualRecords(ctx context.Context, userID uuid.UUID) ([]model.MenstrualRecord, error)
+	CreateMenstrualRecord(ctx context.Context, record *model.MenstrualRecord) error
+	DeleteMenstrualRecordByUser(ctx context.Context, id, userID uuid.UUID) (bool, error)
+}
+
+func NewHealthService(healthRepo healthRepository) *HealthService {
 	return &HealthService{healthRepo: healthRepo}
 }
 
@@ -265,8 +354,15 @@ func (s *HealthService) CreatePoopRecord(ctx context.Context, record *model.Poop
 	return s.healthRepo.CreatePoopRecord(ctx, record)
 }
 
-func (s *HealthService) DeletePoopRecord(ctx context.Context, id uuid.UUID) error {
-	return s.healthRepo.DeletePoopRecord(ctx, id)
+func (s *HealthService) DeletePoopRecord(ctx context.Context, id, userID uuid.UUID) error {
+	deleted, err := s.healthRepo.DeletePoopRecordByUser(ctx, id, userID)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return ErrForbidden
+	}
+	return nil
 }
 
 func (s *HealthService) GetMenstrualRecords(ctx context.Context, userID uuid.UUID) ([]model.MenstrualRecord, error) {
@@ -280,8 +376,15 @@ func (s *HealthService) CreateMenstrualRecord(ctx context.Context, record *model
 	return s.healthRepo.CreateMenstrualRecord(ctx, record)
 }
 
-func (s *HealthService) DeleteMenstrualRecord(ctx context.Context, id uuid.UUID) error {
-	return s.healthRepo.DeleteMenstrualRecord(ctx, id)
+func (s *HealthService) DeleteMenstrualRecord(ctx context.Context, id, userID uuid.UUID) error {
+	deleted, err := s.healthRepo.DeleteMenstrualRecordByUser(ctx, id, userID)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return ErrForbidden
+	}
+	return nil
 }
 
 func (s *HealthService) GetMenstrualPrediction(ctx context.Context, userID uuid.UUID) (*model.MenstrualPrediction, error) {
