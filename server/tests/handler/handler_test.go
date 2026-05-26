@@ -317,6 +317,55 @@ func TestCreateTransaction_NoAuth(t *testing.T) {
 	}
 }
 
+func TestGetTransactions_NoAuth(t *testing.T) {
+	r := setupLedgerRouter()
+	ledgerID := uuid.New().String()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/ledgers/"+ledgerID+"/transactions", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestDeleteTransaction_NoAuth(t *testing.T) {
+	r := setupLedgerRouter()
+	ledgerID := uuid.New().String()
+	txID := uuid.New().String()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("DELETE", "/ledgers/"+ledgerID+"/transactions/"+txID, nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestGetTransactionStatistics_NoAuth(t *testing.T) {
+	r := setupLedgerRouter()
+	ledgerID := uuid.New().String()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/ledgers/"+ledgerID+"/statistics?month=6&year=2025", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestGetTransactionCalendar_NoAuth(t *testing.T) {
+	r := setupLedgerRouter()
+	ledgerID := uuid.New().String()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/ledgers/"+ledgerID+"/calendar?month=6&year=2025", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
 // ============ Savings Handler Tests ============
 
 func setupSavingsRouter() *gin.Engine {
@@ -399,16 +448,14 @@ func TestCreateInvestment_NoAuth(t *testing.T) {
 }
 
 func TestDeleteInvestment_NoAuth(t *testing.T) {
-	// DELETE doesn't check auth, calls service directly → nil repo → panic → 500 (Recovery)
 	r := setupInvestmentRouter()
 	id := uuid.New().String()
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("DELETE", "/investments/"+id, nil)
 	r.ServeHTTP(w, req)
 
-	// Recovery middleware catches the nil pointer panic and returns 500
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500 from nil repo panic, got %d", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
 	}
 }
 
@@ -445,6 +492,18 @@ func TestCreatePoopRecord_NoAuth(t *testing.T) {
 	}
 }
 
+func TestDeletePoopRecord_NoAuth(t *testing.T) {
+	r := setupHealthRouter()
+	id := uuid.New().String()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("DELETE", "/health/poop/"+id, nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
 func TestGetMenstrualRecords_NoAuth(t *testing.T) {
 	r := setupHealthRouter()
 	w := httptest.NewRecorder()
@@ -462,6 +521,18 @@ func TestCreateMenstrualRecord_NoAuth(t *testing.T) {
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/health/menstrual", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestDeleteMenstrualRecord_NoAuth(t *testing.T) {
+	r := setupHealthRouter()
+	id := uuid.New().String()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("DELETE", "/health/menstrual/"+id, nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusUnauthorized {
