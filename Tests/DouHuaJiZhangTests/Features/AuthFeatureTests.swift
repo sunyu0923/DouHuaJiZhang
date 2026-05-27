@@ -199,19 +199,19 @@ final class AuthFeatureTests: XCTestCase {
                 throw APIError.unauthorized
             }
         }
-        
+
         await store.send(.login) {
             $0.isLoading = true
             $0.errorMessage = nil
         }
-        
+
         await store.receive(\.loginResponse.failure) {
             $0.isLoading = false
             $0.failedAttempts = 1
             $0.errorMessage = APIError.unauthorized.localizedDescription
         }
     }
-    
+
     func testLogin_threeFailures_locksAccount() async {
         let clock = TestClock()
         
