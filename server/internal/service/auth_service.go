@@ -107,6 +107,9 @@ func (s *AuthService) SendVerificationCode(ctx context.Context, phone string) er
 func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*model.AuthResponse, error) {
 	claims := &middleware.Claims{}
 	token, err := jwt.ParseWithClaims(refreshToken, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
 		return []byte(s.cfg.JWTSecret), nil
 	})
 	if err != nil || !token.Valid {
