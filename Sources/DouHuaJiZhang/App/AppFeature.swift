@@ -104,6 +104,7 @@ struct AppFeature {
                             await send(.authStatusChecked(false, nil))
                         }
                     } catch {
+                        try? await keychainClient.deleteAll()
                         await send(.authStatusChecked(false, nil))
                     }
                 }
