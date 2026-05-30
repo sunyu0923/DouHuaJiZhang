@@ -85,6 +85,27 @@ final class AppFeatureTests: XCTestCase {
         }
     }
     
+    func testCheckAuthStatus_invalidTokenClearsKeychain() async {
+        let recorder = DeleteRecorder()
+        
+        let store = TestStore(initialState: AppFeature.State()) {
+            AppFeature()
+        } withDependencies: {
+            $0.keychainClient.getToken = { "stale-token" }
+            $0.keychainClient.deleteAll = { recorder.didDelete = true }
+            $0.apiClient.fetchProfile = { throw APIError.unauthorized }
+        }
+        
+        await store.send(.checkAuthStatus)
+        
+        await store.receive(\.authStatusChecked) {
+            $0.isAuthenticated = false
+            $0.currentUser = nil
+            $0.auth = AuthFeature.State()
+        }
+        XCTAssertTrue(recorder.didDelete)
+    }
+    
     // MARK: - Login Success (from auth child)
     
     func testAuthLoginSuccess_dismissesAuth() async {
@@ -190,4 +211,8 @@ final class AppFeatureTests: XCTestCase {
         XCTAssertNil(state.auth)
         XCTAssertNil(state.settings)
     }
+}
+
+private final class DeleteRecorder: @unchecked Sendable {
+    var didDelete = false
 }

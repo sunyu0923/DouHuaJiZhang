@@ -226,19 +226,6 @@ struct LoginView: View {
                 store.send(.login)
             }
             .padding(.horizontal, DesignSystem.Spacing.xxl)
-            .overlay {
-                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.extraLarge)
-                    .stroke(Color(hex: "6F4CD7"), lineWidth: store.isMockAccountMatched ? 2 : 0)
-                    .padding(.horizontal, DesignSystem.Spacing.xxl)
-            }
-            .shadow(
-                color: Color(hex: "6F4CD7").opacity(store.isMockAccountMatched ? 0.45 : 0),
-                radius: store.isMockAccountMatched ? 14 : 0,
-                x: 0,
-                y: store.isMockAccountMatched ? 6 : 0
-            )
-            .scaleEffect(store.isMockAccountMatched ? 1.02 : 1.0)
-            .animation(.easeInOut(duration: 0.2), value: store.isMockAccountMatched)
             
             if store.isLoading {
                 ProgressView()

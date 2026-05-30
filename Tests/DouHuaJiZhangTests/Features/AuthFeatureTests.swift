@@ -155,6 +155,45 @@ final class AuthFeatureTests: XCTestCase {
         await store.receive(\.loginSuccess)
     }
     
+    func testLogin_formerMockCredentialsUseAPI() async {
+        let recorder = TokenRecorder()
+        let testUser = User(phone: "15524809230", nickname: "服务器账号")
+        let testResponse = AuthResponse(token: "server-token", refreshToken: "server-refresh", user: testUser)
+        
+        let store = TestStore(
+            initialState: {
+                var state = AuthFeature.State()
+                state.phone = "15524809230"
+                state.password = "1234"
+                return state
+            }()
+        ) {
+            AuthFeature()
+        } withDependencies: {
+            $0.apiClient.login = { request in
+                XCTAssertEqual(request.phone, "15524809230")
+                XCTAssertEqual(request.password, "1234")
+                return testResponse
+            }
+            $0.keychainClient.saveToken = { recorder.token = $0 }
+            $0.keychainClient.saveRefreshToken = { _ in }
+            $0.keychainClient.saveUserId = { _ in }
+        }
+        
+        await store.send(.login) {
+            $0.isLoading = true
+            $0.errorMessage = nil
+        }
+        
+        await store.receive(\.loginResponse.success) {
+            $0.isLoading = false
+            $0.failedAttempts = 0
+        }
+        
+        await store.receive(\.loginSuccess)
+        XCTAssertEqual(recorder.token, "server-token")
+    }
+    
     func testLogin_failure_incrementsAttempts() async {
         let store = TestStore(
             initialState: {
@@ -351,4 +390,8 @@ final class AuthFeatureTests: XCTestCase {
             $0.errorMessage = nil
         }
     }
+}
+
+private final class TokenRecorder: @unchecked Sendable {
+    var token: String?
 }

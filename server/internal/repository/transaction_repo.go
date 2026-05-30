@@ -6,6 +6,7 @@ import (
 
 	"github.com/douhuajizhang/server/internal/model"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 )
@@ -18,14 +19,27 @@ func NewTransactionRepository(pool *pgxpool.Pool) *TransactionRepository {
 	return &TransactionRepository{pool: pool}
 }
 
-func (r *TransactionRepository) Create(ctx context.Context, tx *model.Transaction) error {
-	_, err := r.pool.Exec(ctx,
+func (r *TransactionRepository) Create(ctx context.Context, tx *model.Transaction) (*model.Transaction, bool, error) {
+	created := &model.Transaction{}
+	err := r.pool.QueryRow(ctx,
 		`INSERT INTO transactions (id, operation_id, ledger_id, creator_id, amount, type, category, note, date, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-		 ON CONFLICT (operation_id) DO NOTHING`,
+		 ON CONFLICT (operation_id) DO NOTHING
+		 RETURNING id, operation_id, ledger_id, creator_id, amount, type, category, note, date, created_at, updated_at`,
 		tx.ID, tx.OperationID, tx.LedgerID, tx.CreatorID, tx.Amount, tx.Type, tx.Category, tx.Note, tx.Date, tx.CreatedAt, tx.UpdatedAt,
-	)
-	return err
+	).Scan(&created.ID, &created.OperationID, &created.LedgerID, &created.CreatorID, &created.Amount, &created.Type, &created.Category, &created.Note, &created.Date, &created.CreatedAt, &created.UpdatedAt)
+	if err == nil {
+		return created, true, nil
+	}
+	if err != pgx.ErrNoRows {
+		return nil, false, err
+	}
+
+	existing, err := r.GetByOperationID(ctx, tx.OperationID)
+	if err != nil {
+		return nil, false, err
+	}
+	return existing, false, nil
 }
 
 func (r *TransactionRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Transaction, error) {
@@ -33,6 +47,18 @@ func (r *TransactionRepository) GetByID(ctx context.Context, id uuid.UUID) (*mod
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, operation_id, ledger_id, creator_id, amount, type, category, note, date, created_at, updated_at
 		 FROM transactions WHERE id = $1`, id,
+	).Scan(&tx.ID, &tx.OperationID, &tx.LedgerID, &tx.CreatorID, &tx.Amount, &tx.Type, &tx.Category, &tx.Note, &tx.Date, &tx.CreatedAt, &tx.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return tx, nil
+}
+
+func (r *TransactionRepository) GetByOperationID(ctx context.Context, operationID uuid.UUID) (*model.Transaction, error) {
+	tx := &model.Transaction{}
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, operation_id, ledger_id, creator_id, amount, type, category, note, date, created_at, updated_at
+		 FROM transactions WHERE operation_id = $1`, operationID,
 	).Scan(&tx.ID, &tx.OperationID, &tx.LedgerID, &tx.CreatorID, &tx.Amount, &tx.Type, &tx.Category, &tx.Note, &tx.Date, &tx.CreatedAt, &tx.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -73,9 +99,12 @@ func (r *TransactionRepository) GetPaginated(ctx context.Context, ledgerID uuid.
 	return txns, total, nil
 }
 
-func (r *TransactionRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM transactions WHERE id = $1`, id)
-	return err
+func (r *TransactionRepository) DeleteFromLedger(ctx context.Context, ledgerID, id uuid.UUID) (bool, error) {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM transactions WHERE ledger_id = $1 AND id = $2`, ledgerID, id)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 func (r *TransactionRepository) GetStatistics(ctx context.Context, ledgerID uuid.UUID, month, year int) (*model.StatisticsData, error) {
