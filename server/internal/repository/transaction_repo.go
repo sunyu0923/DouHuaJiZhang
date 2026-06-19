@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/douhuajizhang/server/internal/model"
@@ -14,18 +15,26 @@ type TransactionRepository struct {
 	pool *pgxpool.Pool
 }
 
+var ErrDuplicateOperation = errors.New("duplicate operation")
+
 func NewTransactionRepository(pool *pgxpool.Pool) *TransactionRepository {
 	return &TransactionRepository{pool: pool}
 }
 
 func (r *TransactionRepository) Create(ctx context.Context, tx *model.Transaction) error {
-	_, err := r.pool.Exec(ctx,
+	tag, err := r.pool.Exec(ctx,
 		`INSERT INTO transactions (id, operation_id, ledger_id, creator_id, amount, type, category, note, date, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		 ON CONFLICT (operation_id) DO NOTHING`,
 		tx.ID, tx.OperationID, tx.LedgerID, tx.CreatorID, tx.Amount, tx.Type, tx.Category, tx.Note, tx.Date, tx.CreatedAt, tx.UpdatedAt,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrDuplicateOperation
+	}
+	return nil
 }
 
 func (r *TransactionRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Transaction, error) {
@@ -73,8 +82,8 @@ func (r *TransactionRepository) GetPaginated(ctx context.Context, ledgerID uuid.
 	return txns, total, nil
 }
 
-func (r *TransactionRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM transactions WHERE id = $1`, id)
+func (r *TransactionRepository) Delete(ctx context.Context, ledgerID, id uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM transactions WHERE ledger_id = $1 AND id = $2`, ledgerID, id)
 	return err
 }
 
